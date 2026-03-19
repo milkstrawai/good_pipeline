@@ -148,7 +148,7 @@ class TestPipeline < Minitest::Test
     klass = Class.new(GoodPipeline::Pipeline) do
       def configure(**) = run(:a, TestPipeline::DownloadJob)
     end
-    instance = klass.run
+    instance = klass.build
     assert_instance_of klass, instance
   end
 
@@ -156,7 +156,7 @@ class TestPipeline < Minitest::Test
     klass = Class.new(GoodPipeline::Pipeline) do
       def configure(**) = run(:a, TestPipeline::DownloadJob)
     end
-    instance = klass.run(video_id: 42)
+    instance = klass.build(video_id: 42)
     assert_equal({ video_id: 42 }, instance.params)
     assert instance.params.frozen?
   end
@@ -165,7 +165,7 @@ class TestPipeline < Minitest::Test
     klass = Class.new(GoodPipeline::Pipeline) do
       def configure(**) = run(:a, TestPipeline::DownloadJob)
     end
-    instance = klass.run
+    instance = klass.build
     assert instance.frozen?
   end
 
@@ -173,7 +173,7 @@ class TestPipeline < Minitest::Test
     klass = Class.new(GoodPipeline::Pipeline) do
       def configure(**) = run(:a, TestPipeline::DownloadJob)
     end
-    instance = klass.run
+    instance = klass.build
     assert instance.step_definitions.frozen?
   end
 
@@ -187,7 +187,7 @@ class TestPipeline < Minitest::Test
       end
     end
 
-    instance = klass.run
+    instance = klass.build
     assert_equal 2, instance.step_definitions.size
     assert_equal :download, instance.step_definitions[0].key
     assert_equal :transcode, instance.step_definitions[1].key
@@ -206,7 +206,7 @@ class TestPipeline < Minitest::Test
       end
     end
 
-    instance = klass.run
+    instance = klass.build
     step = instance.step_definitions.find { |s| s.key == :download }
     assert_equal({ url: "https://example.com" }, step.params)
     assert_equal [:transcode], step.dependencies
@@ -219,7 +219,7 @@ class TestPipeline < Minitest::Test
     klass = Class.new(GoodPipeline::Pipeline) do
       def configure(**) = run(:a, TestPipeline::DownloadJob)
     end
-    instance = klass.run
+    instance = klass.build
     assert_equal({}, instance.step_definitions[0].params)
   end
 
@@ -230,7 +230,7 @@ class TestPipeline < Minitest::Test
         run :b, TestPipeline::TranscodeJob, after: :a
       end
     end
-    instance = klass.run
+    instance = klass.build
     assert_equal [:a], instance.step_definitions[1].dependencies
   end
 
@@ -241,7 +241,7 @@ class TestPipeline < Minitest::Test
       def configure(**); end
     end
 
-    assert_raises(GoodPipeline::InvalidPipelineError) { klass.run }
+    assert_raises(GoodPipeline::InvalidPipelineError) { klass.build }
   end
 
   def test_duplicate_keys_raise
@@ -252,7 +252,7 @@ class TestPipeline < Minitest::Test
       end
     end
 
-    error = assert_raises(GoodPipeline::InvalidPipelineError) { klass.run }
+    error = assert_raises(GoodPipeline::InvalidPipelineError) { klass.build }
     assert_equal "duplicate step key :a", error.message
   end
 
@@ -263,7 +263,7 @@ class TestPipeline < Minitest::Test
       end
     end
 
-    error = assert_raises(GoodPipeline::InvalidPipelineError) { klass.run }
+    error = assert_raises(GoodPipeline::InvalidPipelineError) { klass.build }
     assert_includes error.message, "unknown dependency :missing"
   end
 
@@ -275,7 +275,7 @@ class TestPipeline < Minitest::Test
       end
     end
 
-    error = assert_raises(GoodPipeline::InvalidPipelineError) { klass.run }
+    error = assert_raises(GoodPipeline::InvalidPipelineError) { klass.build }
     assert_includes error.message, "cycle detected:"
   end
 
@@ -289,7 +289,7 @@ class TestPipeline < Minitest::Test
       end
     end
 
-    klass.run # should not raise
+    klass.build # should not raise
   end
 
   # --- Topology: steps_by_key and root_steps ---
@@ -302,7 +302,7 @@ class TestPipeline < Minitest::Test
       end
     end
 
-    instance = klass.run
+    instance = klass.build
     assert_instance_of Hash, instance.steps_by_key
     assert_equal %i[download transcode], instance.steps_by_key.keys
     assert_equal :download, instance.steps_by_key[:download].key
@@ -318,7 +318,7 @@ class TestPipeline < Minitest::Test
       end
     end
 
-    instance = klass.run
+    instance = klass.build
     root_keys = instance.root_steps.map(&:key)
     assert_equal %i[download extract], root_keys
     assert instance.root_steps.frozen?
@@ -331,7 +331,7 @@ class TestPipeline < Minitest::Test
       description "My pipeline"
       def configure(**) = run(:a, TestPipeline::DownloadJob)
     end
-    assert_equal "My pipeline", klass.run.description
+    assert_equal "My pipeline", klass.build.description
   end
 
   def test_instance_delegates_failure_strategy
@@ -339,7 +339,7 @@ class TestPipeline < Minitest::Test
       failure_strategy :continue
       def configure(**) = run(:a, TestPipeline::DownloadJob)
     end
-    assert_equal :continue, klass.run.failure_strategy
+    assert_equal :continue, klass.build.failure_strategy
   end
 
   def test_instance_delegates_callbacks
@@ -349,7 +349,7 @@ class TestPipeline < Minitest::Test
       on_failure :oops
       def configure(**) = run(:a, TestPipeline::DownloadJob)
     end
-    instance = klass.run
+    instance = klass.build
     assert_equal :done, instance.on_complete_callback
     assert_equal :yay, instance.on_success_callback
     assert_equal :oops, instance.on_failure_callback
@@ -358,7 +358,7 @@ class TestPipeline < Minitest::Test
   # --- NotImplementedError ---
 
   def test_base_pipeline_without_configure_raises
-    error = assert_raises(NotImplementedError) { GoodPipeline::Pipeline.run }
+    error = assert_raises(NotImplementedError) { GoodPipeline::Pipeline.build }
     assert_includes error.message, "must implement #configure"
   end
 
@@ -368,7 +368,7 @@ class TestPipeline < Minitest::Test
     klass = Class.new(GoodPipeline::Pipeline) do
       def configure(**) = run(:a, TestPipeline::DownloadJob)
     end
-    instance = klass.run
+    instance = klass.build
 
     assert_raises(GoodPipeline::ConfigurationError) do
       instance.send(:run, :b, TestPipeline::TranscodeJob)
@@ -394,7 +394,7 @@ class TestPipeline < Minitest::Test
       end
     end
 
-    instance = klass.run(video_id: 123)
+    instance = klass.build(video_id: 123)
 
     assert_equal 5, instance.step_definitions.size
     assert_equal({ video_id: 123 }, instance.params)
@@ -419,7 +419,7 @@ class TestPipeline < Minitest::Test
       end
     end
 
-    instance = klass.run(video_id: 99)
+    instance = klass.build(video_id: 99)
     assert_equal({ id: 99 }, instance.step_definitions[0].params)
   end
 end

@@ -2,6 +2,9 @@
 
 require "test_helper"
 require "active_record"
+require "active_job"
+
+ActiveJob::Base.logger = Logger.new(nil)
 
 ActiveRecord::Base.establish_connection(
   adapter: "postgresql",
@@ -67,6 +70,49 @@ require_relative "../app/models/good_pipeline/pipeline_record"
 require_relative "../app/models/good_pipeline/step_record"
 require_relative "../app/models/good_pipeline/dependency_record"
 require_relative "../app/models/good_pipeline/chain_record"
+
+require_relative "../lib/good_pipeline/failure_metadata"
+require_relative "../lib/good_pipeline/coordinator"
+require_relative "../lib/good_pipeline/runner"
+require_relative "../app/jobs/good_pipeline/step_finished_job"
+require_relative "../app/jobs/good_pipeline/pipeline_callback_job"
+require_relative "../app/jobs/good_pipeline/pipeline_reconciliation_job"
+
+# Stub GoodJob module for tests that don't load the full GoodJob gem
+unless defined?(GoodJob)
+  module GoodJob
+    class Batch # :nodoc:
+    end
+
+    class Job
+      ERROR_MESSAGE_SEPARATOR = ": "
+    end
+  end
+end
+
+class MockBatch
+  attr_accessor :on_finish, :properties, :description, :id, :callback_queue_name, :callback_priority
+
+  def initialize
+    @id = SecureRandom.uuid
+    @properties = {}
+  end
+
+  def enqueue
+    yield if block_given?
+    self
+  end
+
+  def save; end
+
+  def succeeded?
+    @succeeded
+  end
+
+  def _set_succeeded(value)
+    @succeeded = value
+  end
+end
 
 module ActiveRecordTestCase
   def setup

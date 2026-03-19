@@ -26,7 +26,7 @@ module GoodPipeline
         return @failure_strategy || :halt if strategy == :__unset__
 
         unless VALID_FAILURE_STRATEGIES.include?(strategy)
-          valid = VALID_FAILURE_STRATEGIES.map { |s| ":#{s}" }.join(", ")
+          valid = VALID_FAILURE_STRATEGIES.map { |strategy| ":#{strategy}" }.join(", ")
           raise ConfigurationError, "invalid failure strategy :#{strategy}, must be one of #{valid}"
         end
 
@@ -51,14 +51,26 @@ module GoodPipeline
         @on_failure = method_name
       end
 
-      def run(**)
+      def build(**)
         new(**)
+      end
+
+      def run(**)
+        instance = new(**)
+        Runner.call(instance)
+      end
+
+      def for_callback(pipeline_record)
+        instance = allocate
+        instance.instance_variable_set(:@pipeline_record, pipeline_record)
+        instance.instance_variable_set(:@params, pipeline_record.params.symbolize_keys.freeze)
+        instance
       end
     end
 
     # --- Instance API ---
 
-    attr_reader :step_definitions, :steps_by_key, :root_steps, :params
+    attr_reader :step_definitions, :steps_by_key, :root_steps, :params, :pipeline_record
 
     def description
       self.class.description
@@ -88,8 +100,8 @@ module GoodPipeline
       GraphValidator.validate!(@step_definitions)
       @step_definitions.freeze
       @building = false
-      @steps_by_key = @step_definitions.to_h { |s| [s.key, s] }.freeze
-      @root_steps = @step_definitions.select { |s| s.dependencies.empty? }.freeze
+      @steps_by_key = @step_definitions.to_h { |step| [step.key, step] }.freeze
+      @root_steps = @step_definitions.select { |step| step.dependencies.empty? }.freeze
       freeze
     end
 

@@ -32,11 +32,19 @@ module GoodPipeline
              inverse_of: :step,
              dependent: :delete_all
 
+    has_many :upstream_steps,
+             through: :upstream_dependencies,
+             source: :depends_on_step
+
     has_many :downstream_dependencies,
              class_name: "GoodPipeline::DependencyRecord",
              foreign_key: :depends_on_step_id,
              inverse_of: :depends_on_step,
              dependent: :delete_all
+
+    has_many :downstream_steps,
+             through: :downstream_dependencies,
+             source: :step
 
     def terminal_coordination_status?
       TERMINAL_COORDINATION_STATUSES.include?(coordination_status)

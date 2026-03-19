@@ -27,26 +27,22 @@ class TestDependencyRecord < Minitest::Test
     GoodPipeline::DependencyRecord.create!(pipeline: pipeline, step: step_d, depends_on_step: step_b)
     GoodPipeline::DependencyRecord.create!(pipeline: pipeline, step: step_d, depends_on_step: step_c)
 
-    # A has no upstream dependencies
-    assert_empty step_a.upstream_dependencies
+    # A has no upstream steps
+    assert_empty step_a.upstream_steps
 
-    # A's downstream: B and C depend on A
-    downstream_of_a = step_a.downstream_dependencies.map { |d| d.step.key }
-    assert_equal %w[b c], downstream_of_a.sort
+    # A's downstream: B and C
+    assert_equal %w[b c], step_a.downstream_steps.map(&:key).sort
 
-    # B's upstream: depends on A
-    upstream_of_b = step_b.upstream_dependencies.map { |d| d.depends_on_step.key }
-    assert_equal ["a"], upstream_of_b
+    # B's upstream: A
+    assert_equal ["a"], step_b.upstream_steps.map(&:key)
 
-    # B's downstream: D depends on B
-    downstream_of_b = step_b.downstream_dependencies.map { |d| d.step.key }
-    assert_equal ["d"], downstream_of_b
+    # B's downstream: D
+    assert_equal ["d"], step_b.downstream_steps.map(&:key)
 
-    # D's upstream: depends on B and C
-    upstream_of_d = step_d.upstream_dependencies.map { |d| d.depends_on_step.key }
-    assert_equal %w[b c], upstream_of_d.sort
+    # D's upstream: B and C
+    assert_equal %w[b c], step_d.upstream_steps.map(&:key).sort
 
     # D has no downstream
-    assert_empty step_d.downstream_dependencies
+    assert_empty step_d.downstream_steps
   end
 end
