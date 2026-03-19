@@ -1,0 +1,10 @@
+[tools]
+ruby = "3.4.7"
+
+[tasks."docker:start"]
+description = "Start Docker services using docker-compose"
+run = "docker compose -f dev-docker-compose.yml up -d"
+
+[tasks."docker:stop"]
+description = "Stop Docker services using docker-compose"
+run = "docker compose -f dev-docker-compose.yml down"
