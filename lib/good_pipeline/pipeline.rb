@@ -3,17 +3,16 @@
 module GoodPipeline
   class Pipeline
     VALID_FAILURE_STRATEGIES = %i[halt continue ignore].freeze
+    DSL_ATTRIBUTES = %i[description failure_strategy on_complete on_success on_failure].freeze
 
     # --- Class-level DSL ---
 
     class << self
       def inherited(subclass)
         super
-        subclass.instance_variable_set(:@description, @description)
-        subclass.instance_variable_set(:@failure_strategy, @failure_strategy)
-        subclass.instance_variable_set(:@on_complete, @on_complete)
-        subclass.instance_variable_set(:@on_success, @on_success)
-        subclass.instance_variable_set(:@on_failure, @on_failure)
+        DSL_ATTRIBUTES.each do |attribute|
+          subclass.instance_variable_set(:"@#{attribute}", instance_variable_get(:"@#{attribute}"))
+        end
       end
 
       def description(text = :__unset__)
@@ -26,7 +25,7 @@ module GoodPipeline
         return @failure_strategy || :halt if strategy == :__unset__
 
         unless VALID_FAILURE_STRATEGIES.include?(strategy)
-          valid = VALID_FAILURE_STRATEGIES.map { |strategy| ":#{strategy}" }.join(", ")
+          valid = VALID_FAILURE_STRATEGIES.map { |valid_strategy| ":#{valid_strategy}" }.join(", ")
           raise ConfigurationError, "invalid failure strategy :#{strategy}, must be one of #{valid}"
         end
 
@@ -51,9 +50,7 @@ module GoodPipeline
         @on_failure = method_name
       end
 
-      def build(**)
-        new(**)
-      end
+      alias build new
 
       def run(**)
         instance = new(**)
@@ -64,6 +61,9 @@ module GoodPipeline
         instance = allocate
         instance.instance_variable_set(:@pipeline_record, pipeline_record)
         instance.instance_variable_set(:@params, pipeline_record.params.symbolize_keys.freeze)
+        instance.instance_variable_set(:@step_definitions, [].freeze)
+        instance.instance_variable_set(:@steps_by_key, {}.freeze)
+        instance.instance_variable_set(:@root_steps, [].freeze)
         instance
       end
     end
@@ -80,17 +80,9 @@ module GoodPipeline
       self.class.failure_strategy
     end
 
-    def on_complete_callback
-      self.class.on_complete
-    end
-
-    def on_success_callback
-      self.class.on_success
-    end
-
-    def on_failure_callback
-      self.class.on_failure
-    end
+    def on_complete_callback = self.class.on_complete
+    def on_success_callback = self.class.on_success
+    def on_failure_callback = self.class.on_failure
 
     def initialize(**kwargs)
       @params = kwargs.freeze
@@ -111,7 +103,7 @@ module GoodPipeline
       raise NotImplementedError, "#{self.class} must implement #configure"
     end
 
-    def run(key, job_class, with: {}, after: [], on_failure: nil, queue: nil, priority: nil)
+    def run(key, job_class, with: {}, after: [], failure_strategy: nil, queue: nil, priority: nil)
       raise ConfigurationError, "run can only be called inside configure" unless @building
 
       @step_definitions << StepDefinition.new(
@@ -119,7 +111,7 @@ module GoodPipeline
         job_class: job_class,
         params: with,
         dependencies: after,
-        on_failure: on_failure,
+        failure_strategy: failure_strategy,
         queue: queue,
         priority: priority
       )

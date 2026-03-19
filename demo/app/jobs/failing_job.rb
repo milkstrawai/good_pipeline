@@ -6,7 +6,7 @@ class FailingJob < ApplicationJob
 
   discard_on FailingError
 
-  def perform(**_kwargs)
+  def perform(**)
     raise FailingError, "intentional failure"
   end
 end

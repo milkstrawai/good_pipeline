@@ -24,33 +24,28 @@ module GoodPipeline
 
       pipeline = step.pipeline
 
-      # Early recompute — may already be terminal (e.g. single-step pipeline)
-      recompute_pipeline_status(pipeline.reload)
-      return if pipeline.reload.terminal?
-
-      # Unit 2: Halt propagation
-      if !succeeded && pipeline.on_failure_strategy == "halt"
+      # Halt propagation
+      if !succeeded && pipeline.halt?
         StepRecord.transaction do
           pipeline.update_column(:halt_triggered, true)
           skip_all_pending_steps(pipeline, except_dependents_of: step)
         end
       end
 
-      # Unit 3: Downstream unblocking
+      # Downstream unblocking
       step.downstream_steps.each do |downstream_step|
         try_enqueue_step(downstream_step.id)
       end
 
-      # Final recompute
       recompute_pipeline_status(pipeline.reload)
     end
 
-    def self.try_enqueue_step(step_id) # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
+    def self.try_enqueue_step(step_id) # rubocop:disable Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
       skipped_downstream_ids = nil
 
       StepRecord.transaction do
         locked_step = StepRecord.lock("FOR UPDATE SKIP LOCKED").find_by(id: step_id)
-        return unless locked_step&.coordination_status == "pending"
+        return unless locked_step&.pending?
         return if locked_step.good_job_id.present?
 
         if should_skip?(locked_step)
@@ -63,7 +58,7 @@ module GoodPipeline
         end
       end
 
-      skipped_downstream_ids&.each { |step_id| try_enqueue_step(step_id) }
+      skipped_downstream_ids&.each { |downstream_step_id| try_enqueue_step(downstream_step_id) }
     end
 
     def self.enqueue_user_job(step) # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
@@ -84,25 +79,24 @@ module GoodPipeline
       step.update_column(:good_job_batch_id, batch.id)
     end
 
-    def self.recompute_pipeline_status(pipeline) # rubocop:disable Metrics/MethodLength
+    def self.recompute_pipeline_status(pipeline)
       steps = pipeline.steps.reload
 
-      non_terminal_statuses = %w[pending enqueued]
-      return if steps.any? { |step| non_terminal_statuses.include?(step.coordination_status) }
+      return if steps.any? { |step| step.pending? || step.enqueued? }
       return if pipeline.terminal?
 
-      failed_steps = steps.select { |step| step.coordination_status == "failed" }
-
-      new_status = if failed_steps.empty?
-                     :succeeded
-                   elsif pipeline.halt_triggered?
-                     :halted
-                   else
-                     :failed
-                   end
-
+      new_status = derive_terminal_status(steps, pipeline)
       pipeline.transition_to!(new_status)
       dispatch_callbacks_once(pipeline, new_status)
+    end
+
+    def self.derive_terminal_status(steps, pipeline)
+      has_failures = steps.any?(&:failed?)
+
+      return :succeeded unless has_failures
+      return :halted if pipeline.halt_triggered?
+
+      :failed
     end
 
     def self.dispatch_callbacks_once(pipeline, new_status)
@@ -119,19 +113,19 @@ module GoodPipeline
 
     def self.all_upstreams_satisfied?(step)
       step.upstream_steps.all? do |upstream|
-        upstream.coordination_status == "succeeded" ||
-          (upstream.coordination_status == "failed" && effective_strategy(upstream) == :ignore)
+        upstream.succeeded? ||
+          (upstream.failed? && effective_strategy(upstream) == :ignore)
       end
     end
 
     def self.should_skip?(step)
-      step.coordination_status == "pending" &&
+      step.pending? &&
         step.upstream_steps.any? { |upstream| permanently_unsatisfied?(upstream) }
     end
 
     def self.permanently_unsatisfied?(upstream)
       upstream.terminal_coordination_status? &&
-        upstream.coordination_status != "succeeded" &&
+        !upstream.succeeded? &&
         effective_strategy(upstream) != :ignore
     end
 
@@ -142,7 +136,7 @@ module GoodPipeline
                           []
                         end
 
-      pipeline.steps.where(coordination_status: "pending").find_each do |pending_step|
+      pipeline.steps.pending.find_each do |pending_step|
         next if exempt_step_ids.include?(pending_step.id)
 
         pending_step.transition_coordination_status_to!(:skipped)
@@ -155,6 +149,7 @@ module GoodPipeline
 
     private_class_method :all_upstreams_satisfied?, :should_skip?, :permanently_unsatisfied?,
                          :skip_all_pending_steps, :effective_strategy,
-                         :enqueue_user_job, :dispatch_callbacks_once
+                         :enqueue_user_job, :dispatch_callbacks_once,
+                         :derive_terminal_status
   end
 end

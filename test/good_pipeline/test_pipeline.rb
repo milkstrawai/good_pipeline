@@ -215,7 +215,7 @@ class TestPipeline < Minitest::Test
         run :download, TestPipeline::DownloadJob,
             with: { url: "https://example.com" },
             after: :transcode,
-            on_failure: :retry,
+            failure_strategy: :retry,
             queue: "high",
             priority: 10
       end
@@ -226,7 +226,7 @@ class TestPipeline < Minitest::Test
 
     assert_equal({ url: "https://example.com" }, step.params)
     assert_equal [:transcode], step.dependencies
-    assert_equal :retry, step.on_failure
+    assert_equal :retry, step.failure_strategy
     assert_equal "high", step.queue
     assert_equal 10, step.priority
   end

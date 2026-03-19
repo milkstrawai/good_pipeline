@@ -46,9 +46,9 @@ module GoodPipeline
 
     def check_unknown_references!
       @steps_by_key.each_value do |step|
-        step.dependencies.each do |dep_key|
-          unless @steps_by_key.key?(dep_key)
-            raise InvalidPipelineError, "step :#{step.key} references unknown dependency :#{dep_key}"
+        step.dependencies.each do |dependency_key|
+          unless @steps_by_key.key?(dependency_key)
+            raise InvalidPipelineError, "step :#{step.key} references unknown dependency :#{dependency_key}"
           end
         end
       end
@@ -61,8 +61,8 @@ module GoodPipeline
     def build_forward_edges
       edges = Hash.new { |h, k| h[k] = [] }
       @steps_by_key.each_value do |step|
-        step.dependencies.each do |dep_key|
-          edges[dep_key] << step.key
+        step.dependencies.each do |dependency_key|
+          edges[dependency_key] << step.key
         end
       end
       edges

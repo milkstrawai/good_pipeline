@@ -8,11 +8,13 @@ class TestEndToEnd < ActiveSupport::TestCase
     loop do
       pipeline_record.reload
       return pipeline_record if pipeline_record.terminal?
-      break if Time.current > deadline
+
+      if Time.current > deadline
+        raise "Pipeline #{pipeline_record.id} did not reach terminal state within #{timeout}s (status: #{pipeline_record.status})"
+      end
 
       sleep 0.1
     end
-    pipeline_record
   end
 
   def test_full_pipeline_succeeds

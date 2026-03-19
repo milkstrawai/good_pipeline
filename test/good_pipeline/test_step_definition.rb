@@ -11,7 +11,7 @@ class TestStepDefinition < Minitest::Test
       job_class: DummyJob,
       params: { video_id: 1 },
       dependencies: [:download],
-      on_failure: :ignore,
+      failure_strategy: :ignore,
       queue: "media",
       priority: 10
     )
@@ -20,7 +20,7 @@ class TestStepDefinition < Minitest::Test
     assert_equal DummyJob, step.job_class
     assert_equal({ video_id: 1 }, step.params)
     assert_equal [:download], step.dependencies
-    assert_equal :ignore, step.on_failure
+    assert_equal :ignore, step.failure_strategy
     assert_equal "media", step.queue
     assert_equal 10, step.priority
   end
@@ -43,10 +43,10 @@ class TestStepDefinition < Minitest::Test
     assert_equal [:download], step.dependencies
   end
 
-  def test_defaults_on_failure_to_nil
+  def test_defaults_failure_strategy_to_nil
     step = GoodPipeline::StepDefinition.new(key: :a, job_class: DummyJob)
 
-    assert_nil step.on_failure
+    assert_nil step.failure_strategy
   end
 
   def test_defaults_queue_to_nil

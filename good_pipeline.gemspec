@@ -8,13 +8,16 @@ Gem::Specification.new do |spec|
   spec.authors = ["Ali Hamdi Ali Fadel"]
   spec.email = ["aliosm1997@gmail.com"]
 
-  spec.summary = "TODO: Write a short summary, because RubyGems requires one."
-  spec.description = "TODO: Write a longer description or delete this line."
+  spec.summary = "DAG-based job pipeline orchestration for Rails, built on GoodJob"
+  spec.description = "Define multi-step workflows as directed acyclic graphs " \
+                     "where each step is a GoodJob job. Handles dependency " \
+                     "resolution, parallel execution, failure strategies, " \
+                     "and lifecycle callbacks."
   spec.homepage = "https://github.com/AliOsm/good_pipeline"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.2.0"
 
-  spec.metadata["allowed_push_host"] = "TODO: Set to your gem server 'https://example.com'"
+  spec.metadata["allowed_push_host"] = "https://rubygems.org"
   spec.metadata["homepage_uri"] = spec.homepage
   spec.metadata["source_code_uri"] = "https://github.com/AliOsm/good_pipeline"
   spec.metadata["changelog_uri"] = "https://github.com/AliOsm/good_pipeline/blob/main/CHANGELOG.md"

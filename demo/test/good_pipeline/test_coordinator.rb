@@ -180,7 +180,7 @@ class TestCoordinator < ActiveSupport::TestCase
     GoodPipeline::Coordinator.complete_step(step_a.reload, succeeded: false)
 
     assert_equal "failed", step_a.reload.coordination_status
-    # step_b is a direct dependent of step_a (which has on_failure: :ignore) — should NOT be skipped
+    # step_b is a direct dependent of step_a (which has failure_strategy: :ignore) — should NOT be skipped
     refute_equal "skipped", step_b.reload.coordination_status
     # step_c is unrelated — should be skipped under :halt
     assert_equal "skipped", step_c.reload.coordination_status

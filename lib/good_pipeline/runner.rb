@@ -12,6 +12,7 @@ module GoodPipeline
 
     def call # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
       pipeline_record = nil
+      step_records = {}
 
       PipelineRecord.transaction do # rubocop:disable Metrics/BlockLength
         pipeline_record = PipelineRecord.create!(
@@ -21,14 +22,13 @@ module GoodPipeline
           on_failure_strategy: @pipeline.failure_strategy.to_s
         )
 
-        step_records = {}
         @pipeline.step_definitions.each do |step_definition|
           step_records[step_definition.key] = StepRecord.create!(
             pipeline: pipeline_record,
             key: step_definition.key.to_s,
             job_class: step_definition.job_class.name,
             params: step_definition.params,
-            on_failure_strategy: step_definition.on_failure&.to_s,
+            on_failure_strategy: step_definition.failure_strategy&.to_s,
             queue: step_definition.queue,
             priority: step_definition.priority
           )
@@ -48,11 +48,11 @@ module GoodPipeline
         pipeline_batch.save
         pipeline_record.update_column(:good_job_batch_id, pipeline_batch.id)
 
-        @pipeline.root_steps.each do |step_definition|
-          Coordinator.try_enqueue_step(step_records[step_definition.key].id)
-        end
-
         pipeline_record.transition_to!(:running)
+      end
+
+      @pipeline.root_steps.each do |step_definition|
+        Coordinator.try_enqueue_step(step_records[step_definition.key].id)
       end
 
       pipeline_record

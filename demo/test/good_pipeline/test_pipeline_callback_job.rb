@@ -72,4 +72,61 @@ class TestPipelineCallbackJob < ActiveSupport::TestCase
 
     assert_empty @callback_log
   end
+
+  def test_rejects_invalid_terminal_status
+    klass = build_pipeline_class
+    self.class.const_set(:InvalidStatusPipeline, klass) unless self.class.const_defined?(:InvalidStatusPipeline)
+
+    pipeline = create_pipeline(type: self.class::InvalidStatusPipeline.name)
+    job = GoodPipeline::PipelineCallbackJob.new
+
+    assert_raises(ArgumentError) { job.perform(pipeline.id, "skipped") }
+    assert_raises(ArgumentError) { job.perform(pipeline.id, "invalid") }
+  end
+
+  def test_error_in_callback_is_raised
+    log = @callback_log
+    klass = Class.new(GoodPipeline::Pipeline) do
+      self.on_complete(:exploding_callback)
+
+      define_method(:exploding_callback) do
+        log << :exploded
+        raise StandardError, "callback exploded"
+      end
+
+      def configure(**) = run(:a, Class.new)
+    end
+    self.class.const_set(:ExplodingPipeline, klass) unless self.class.const_defined?(:ExplodingPipeline)
+
+    pipeline = create_pipeline(type: self.class::ExplodingPipeline.name)
+    job = GoodPipeline::PipelineCallbackJob.new
+
+    error = assert_raises(StandardError) { job.perform(pipeline.id, "succeeded") }
+    assert_equal "callback exploded", error.message
+    assert_includes @callback_log, :exploded
+  end
+
+  def test_error_in_first_callback_still_runs_second
+    log = @callback_log
+    klass = Class.new(GoodPipeline::Pipeline) do
+      self.on_complete(:exploding_complete)
+      self.on_success(:record_success)
+
+      define_method(:exploding_complete) do
+        log << :complete_exploded
+        raise StandardError, "complete exploded"
+      end
+      define_method(:record_success) { log << :success_recorded }
+
+      def configure(**) = run(:a, Class.new)
+    end
+    self.class.const_set(:BothCallbacksPipeline, klass) unless self.class.const_defined?(:BothCallbacksPipeline)
+
+    pipeline = create_pipeline(type: self.class::BothCallbacksPipeline.name)
+    job = GoodPipeline::PipelineCallbackJob.new
+
+    assert_raises(StandardError) { job.perform(pipeline.id, "succeeded") }
+    assert_includes @callback_log, :complete_exploded
+    assert_includes @callback_log, :success_recorded
+  end
 end
