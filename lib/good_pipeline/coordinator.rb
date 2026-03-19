@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
 module GoodPipeline
-  class Coordinator
-    def self.complete_step(step, succeeded:)
+  class Coordinator # rubocop:disable Metrics/ClassLength
+    def self.complete_step(step, succeeded:) # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
       return if step.terminal_coordination_status?
 
       # Unit 1: Terminal step transition + metadata
@@ -45,7 +45,7 @@ module GoodPipeline
       recompute_pipeline_status(pipeline.reload)
     end
 
-    def self.try_enqueue_step(step_id)
+    def self.try_enqueue_step(step_id) # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
       skipped_downstream_ids = nil
 
       StepRecord.transaction do
@@ -63,10 +63,10 @@ module GoodPipeline
         end
       end
 
-      skipped_downstream_ids&.each { |sid| try_enqueue_step(sid) }
+      skipped_downstream_ids&.each { |step_id| try_enqueue_step(step_id) }
     end
 
-    def self.enqueue_user_job(step)
+    def self.enqueue_user_job(step) # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
       step.transition_coordination_status_to!(:enqueued)
 
       batch = GoodJob::Batch.new
@@ -84,10 +84,11 @@ module GoodPipeline
       step.update_column(:good_job_batch_id, batch.id)
     end
 
-    def self.recompute_pipeline_status(pipeline)
+    def self.recompute_pipeline_status(pipeline) # rubocop:disable Metrics/MethodLength
       steps = pipeline.steps.reload
 
-      return if steps.any? { |step| %w[pending enqueued].include?(step.coordination_status) }
+      non_terminal_statuses = %w[pending enqueued]
+      return if steps.any? { |step| non_terminal_statuses.include?(step.coordination_status) }
       return if pipeline.terminal?
 
       failed_steps = steps.select { |step| step.coordination_status == "failed" }

@@ -2,7 +2,7 @@
 
 module GoodPipeline
   class PipelineCallbackJob < ActiveJob::Base
-    def perform(pipeline_id, terminal_status)
+    def perform(pipeline_id, terminal_status) # rubocop:disable Metrics/MethodLength
       pipeline_record = GoodPipeline::PipelineRecord.find(pipeline_id)
       context = pipeline_record.type.constantize.for_callback(pipeline_record)
 

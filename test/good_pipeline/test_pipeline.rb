@@ -15,16 +15,19 @@ class TestPipeline < Minitest::Test
     klass = Class.new(GoodPipeline::Pipeline) do
       def configure(**) = run(:a, TestPipeline::DownloadJob)
     end
+
     assert_equal :halt, klass.failure_strategy
   end
 
   def test_default_description_is_nil
     klass = Class.new(GoodPipeline::Pipeline)
+
     assert_nil klass.description
   end
 
   def test_default_callbacks_are_nil
     klass = Class.new(GoodPipeline::Pipeline)
+
     assert_nil klass.on_complete
     assert_nil klass.on_success
     assert_nil klass.on_failure
@@ -37,6 +40,7 @@ class TestPipeline < Minitest::Test
       description "Process videos"
       def configure(**) = run(:a, TestPipeline::DownloadJob)
     end
+
     assert_equal "Process videos", klass.description
   end
 
@@ -47,6 +51,7 @@ class TestPipeline < Minitest::Test
       failure_strategy :halt
       def configure(**) = run(:a, TestPipeline::DownloadJob)
     end
+
     assert_equal :halt, klass.failure_strategy
   end
 
@@ -55,6 +60,7 @@ class TestPipeline < Minitest::Test
       failure_strategy :continue
       def configure(**) = run(:a, TestPipeline::DownloadJob)
     end
+
     assert_equal :continue, klass.failure_strategy
   end
 
@@ -63,6 +69,7 @@ class TestPipeline < Minitest::Test
       failure_strategy :ignore
       def configure(**) = run(:a, TestPipeline::DownloadJob)
     end
+
     assert_equal :ignore, klass.failure_strategy
   end
 
@@ -85,6 +92,7 @@ class TestPipeline < Minitest::Test
       on_complete :notify_complete
       def configure(**) = run(:a, TestPipeline::DownloadJob)
     end
+
     assert_equal :notify_complete, klass.on_complete
   end
 
@@ -93,6 +101,7 @@ class TestPipeline < Minitest::Test
       on_success :notify_success
       def configure(**) = run(:a, TestPipeline::DownloadJob)
     end
+
     assert_equal :notify_success, klass.on_success
   end
 
@@ -101,6 +110,7 @@ class TestPipeline < Minitest::Test
       on_failure :notify_failure
       def configure(**) = run(:a, TestPipeline::DownloadJob)
     end
+
     assert_equal :notify_failure, klass.on_failure
   end
 
@@ -149,6 +159,7 @@ class TestPipeline < Minitest::Test
       def configure(**) = run(:a, TestPipeline::DownloadJob)
     end
     instance = klass.build
+
     assert_instance_of klass, instance
   end
 
@@ -157,8 +168,9 @@ class TestPipeline < Minitest::Test
       def configure(**) = run(:a, TestPipeline::DownloadJob)
     end
     instance = klass.build(video_id: 42)
+
     assert_equal({ video_id: 42 }, instance.params)
-    assert instance.params.frozen?
+    assert_predicate instance.params, :frozen?
   end
 
   def test_instance_is_frozen
@@ -166,7 +178,8 @@ class TestPipeline < Minitest::Test
       def configure(**) = run(:a, TestPipeline::DownloadJob)
     end
     instance = klass.build
-    assert instance.frozen?
+
+    assert_predicate instance, :frozen?
   end
 
   def test_step_definitions_frozen
@@ -174,7 +187,8 @@ class TestPipeline < Minitest::Test
       def configure(**) = run(:a, TestPipeline::DownloadJob)
     end
     instance = klass.build
-    assert instance.step_definitions.frozen?
+
+    assert_predicate instance.step_definitions, :frozen?
   end
 
   # --- DSL verb: run inside configure ---
@@ -188,6 +202,7 @@ class TestPipeline < Minitest::Test
     end
 
     instance = klass.build
+
     assert_equal 2, instance.step_definitions.size
     assert_equal :download, instance.step_definitions[0].key
     assert_equal :transcode, instance.step_definitions[1].key
@@ -208,6 +223,7 @@ class TestPipeline < Minitest::Test
 
     instance = klass.build
     step = instance.step_definitions.find { |s| s.key == :download }
+
     assert_equal({ url: "https://example.com" }, step.params)
     assert_equal [:transcode], step.dependencies
     assert_equal :retry, step.on_failure
@@ -220,6 +236,7 @@ class TestPipeline < Minitest::Test
       def configure(**) = run(:a, TestPipeline::DownloadJob)
     end
     instance = klass.build
+
     assert_equal({}, instance.step_definitions[0].params)
   end
 
@@ -231,6 +248,7 @@ class TestPipeline < Minitest::Test
       end
     end
     instance = klass.build
+
     assert_equal [:a], instance.step_definitions[1].dependencies
   end
 
@@ -303,10 +321,11 @@ class TestPipeline < Minitest::Test
     end
 
     instance = klass.build
+
     assert_instance_of Hash, instance.steps_by_key
     assert_equal %i[download transcode], instance.steps_by_key.keys
     assert_equal :download, instance.steps_by_key[:download].key
-    assert instance.steps_by_key.frozen?
+    assert_predicate instance.steps_by_key, :frozen?
   end
 
   def test_root_steps_returns_dependency_free_steps
@@ -320,8 +339,9 @@ class TestPipeline < Minitest::Test
 
     instance = klass.build
     root_keys = instance.root_steps.map(&:key)
+
     assert_equal %i[download extract], root_keys
-    assert instance.root_steps.frozen?
+    assert_predicate instance.root_steps, :frozen?
   end
 
   # --- Delegation ---
@@ -331,6 +351,7 @@ class TestPipeline < Minitest::Test
       description "My pipeline"
       def configure(**) = run(:a, TestPipeline::DownloadJob)
     end
+
     assert_equal "My pipeline", klass.build.description
   end
 
@@ -339,6 +360,7 @@ class TestPipeline < Minitest::Test
       failure_strategy :continue
       def configure(**) = run(:a, TestPipeline::DownloadJob)
     end
+
     assert_equal :continue, klass.build.failure_strategy
   end
 
@@ -350,6 +372,7 @@ class TestPipeline < Minitest::Test
       def configure(**) = run(:a, TestPipeline::DownloadJob)
     end
     instance = klass.build
+
     assert_equal :done, instance.on_complete_callback
     assert_equal :yay, instance.on_success_callback
     assert_equal :oops, instance.on_failure_callback
@@ -420,6 +443,7 @@ class TestPipeline < Minitest::Test
     end
 
     instance = klass.build(video_id: 99)
+
     assert_equal({ id: 99 }, instance.step_definitions[0].params)
   end
 end

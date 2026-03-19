@@ -10,10 +10,10 @@ module GoodPipeline
       @pipeline = pipeline_instance
     end
 
-    def call
+    def call # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
       pipeline_record = nil
 
-      PipelineRecord.transaction do
+      PipelineRecord.transaction do # rubocop:disable Metrics/BlockLength
         pipeline_record = PipelineRecord.create!(
           type: @pipeline.class.name,
           params: @pipeline.params,

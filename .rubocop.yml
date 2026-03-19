@@ -1,5 +1,44 @@
+plugins:
+  - rubocop-minitest
+  - rubocop-performance
+
 AllCops:
   TargetRubyVersion: 3.2
+  NewCops: enable
+  Exclude:
+    - "lib/generators/**/templates/**"
+    - "demo/**/*"
+
+Style/Documentation:
+  Enabled: false
+
+Style/OneClassPerFile:
+  Exclude:
+    - "test/**/*"
+
+Lint/EmptyClass:
+  Exclude:
+    - "test/**/*"
+
+Metrics/BlockLength:
+  Exclude:
+    - "test/**/*"
+    - "*.gemspec"
+
+Metrics/AbcSize:
+  Exclude:
+    - "test/**/*"
+
+Metrics/MethodLength:
+  Exclude:
+    - "test/**/*"
+
+Metrics/ClassLength:
+  Exclude:
+    - "test/**/*"
+
+Metrics/ParameterLists:
+  CountKeywordArgs: false
 
 Style/StringLiterals:
   EnforcedStyle: double_quotes

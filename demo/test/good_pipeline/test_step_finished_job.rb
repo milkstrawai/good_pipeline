@@ -20,10 +20,7 @@ class TestStepFinishedJob < ActiveSupport::TestCase
     step = create_step(pipeline, key: "a")
     step.update_columns(coordination_status: "enqueued")
 
-    result = GoodPipeline::FailureMetadata::Result.new(error_class: nil, error_message: nil, attempts: 1)
-    GoodPipeline::FailureMetadata.stub(:extract, result) do
-      GoodPipeline::Coordinator.complete_step(step.reload, succeeded: false)
-    end
+    GoodPipeline::Coordinator.complete_step(step.reload, succeeded: false)
 
     assert_equal "failed", step.reload.coordination_status
   end

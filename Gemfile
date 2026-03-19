@@ -6,11 +6,13 @@ source "https://rubygems.org"
 gemspec
 
 gem "irb"
-gem "rake", "~> 13.0"
+gem "rake", "~> 13.3", ">= 13.3.1"
 
-gem "minitest", "~> 5.16"
+gem "minitest", "~> 6.0", ">= 6.0.2"
 
-gem "rubocop", "~> 1.21"
+gem "rubocop", "~> 1.85", ">= 1.85.1"
+gem "rubocop-minitest", "~> 0.39.1"
+gem "rubocop-performance", "~> 1.26", ">= 1.26.1"
 
-gem "pg"
+gem "pg", "~> 1.6", ">= 1.6.3"
 gem "rails", ">= 7.1"

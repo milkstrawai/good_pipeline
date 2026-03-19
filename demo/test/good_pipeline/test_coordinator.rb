@@ -3,6 +3,21 @@
 require "test_helper"
 
 class TestCoordinator < ActiveSupport::TestCase
+  # --- Helper to create a GoodJob::Job record for failure metadata ---
+
+  def create_good_job_for_step(step, error: "RuntimeError: something broke", executions_count: 3)
+    good_job = GoodJob::Job.create!(
+      id: SecureRandom.uuid,
+      active_job_id: SecureRandom.uuid,
+      job_class: step.job_class,
+      error: error,
+      executions_count: executions_count,
+      finished_at: Time.current
+    )
+    step.update_column(:good_job_id, good_job.id)
+    good_job
+  end
+
   # --- complete_step: idempotency ---
 
   def test_complete_step_idempotent_on_terminal_step
@@ -11,7 +26,6 @@ class TestCoordinator < ActiveSupport::TestCase
     step.update_columns(coordination_status: "succeeded", finished_at: Time.current)
     step.reload
 
-    # Should return without error or side effects
     GoodPipeline::Coordinator.complete_step(step, succeeded: true)
     assert_equal "succeeded", step.reload.coordination_status
   end
@@ -39,17 +53,10 @@ class TestCoordinator < ActiveSupport::TestCase
     pipeline.update_columns(status: "running")
     step = build_step(pipeline, key: "a")
     step.update_columns(coordination_status: "enqueued")
+    create_good_job_for_step(step, error: "RuntimeError: something broke", executions_count: 3)
     step.reload
 
-    # Stub FailureMetadata.extract to return test data
-    result = GoodPipeline::FailureMetadata::Result.new(
-      error_class: "RuntimeError",
-      error_message: "something broke",
-      attempts: 3
-    )
-    GoodPipeline::FailureMetadata.stub(:extract, result) do
-      GoodPipeline::Coordinator.complete_step(step, succeeded: false)
-    end
+    GoodPipeline::Coordinator.complete_step(step, succeeded: false)
 
     step.reload
     assert_equal "failed", step.coordination_status
@@ -153,10 +160,7 @@ class TestCoordinator < ActiveSupport::TestCase
     step_c = build_step(pipeline, key: "c", dependencies: [step_a])
     step_a.update_columns(coordination_status: "enqueued")
 
-    result = GoodPipeline::FailureMetadata::Result.new(error_class: nil, error_message: nil, attempts: 1)
-    GoodPipeline::FailureMetadata.stub(:extract, result) do
-      GoodPipeline::Coordinator.complete_step(step_a.reload, succeeded: false)
-    end
+    GoodPipeline::Coordinator.complete_step(step_a.reload, succeeded: false)
 
     assert_equal "failed", step_a.reload.coordination_status
     assert_equal "skipped", step_b.reload.coordination_status
@@ -173,10 +177,7 @@ class TestCoordinator < ActiveSupport::TestCase
     step_c = build_step(pipeline, key: "c")
     step_a.update_columns(coordination_status: "enqueued")
 
-    result = GoodPipeline::FailureMetadata::Result.new(error_class: nil, error_message: nil, attempts: 1)
-    GoodPipeline::FailureMetadata.stub(:extract, result) do
-      GoodPipeline::Coordinator.complete_step(step_a.reload, succeeded: false)
-    end
+    GoodPipeline::Coordinator.complete_step(step_a.reload, succeeded: false)
 
     assert_equal "failed", step_a.reload.coordination_status
     # step_b is a direct dependent of step_a (which has on_failure: :ignore) — should NOT be skipped
@@ -197,15 +198,10 @@ class TestCoordinator < ActiveSupport::TestCase
     step_a.update_columns(coordination_status: "enqueued")
     step_b.update_columns(coordination_status: "succeeded")
 
-    result = GoodPipeline::FailureMetadata::Result.new(error_class: nil, error_message: nil, attempts: 1)
-    GoodPipeline::FailureMetadata.stub(:extract, result) do
-      GoodPipeline::Coordinator.complete_step(step_a.reload, succeeded: false)
-    end
+    GoodPipeline::Coordinator.complete_step(step_a.reload, succeeded: false)
 
     assert_equal "failed", step_a.reload.coordination_status
-    # step_c depends on step_a which failed under :continue — permanently unsatisfied → skipped
     assert_equal "skipped", step_c.reload.coordination_status
-    # step_b was already succeeded — untouched
     assert_equal "succeeded", step_b.reload.coordination_status
     refute pipeline.reload.halt_triggered?
     assert_equal "failed", pipeline.reload.status
@@ -220,14 +216,9 @@ class TestCoordinator < ActiveSupport::TestCase
     build_step(pipeline, key: "b", dependencies: [step_a])
     step_a.update_columns(coordination_status: "enqueued")
 
-    result = GoodPipeline::FailureMetadata::Result.new(error_class: nil, error_message: nil, attempts: 1)
-    GoodPipeline::FailureMetadata.stub(:extract, result) do
-      GoodPipeline::Coordinator.complete_step(step_a.reload, succeeded: false)
-    end
+    GoodPipeline::Coordinator.complete_step(step_a.reload, succeeded: false)
 
     assert_equal "failed", step_a.reload.coordination_status
-    # Under :ignore, step_b should NOT be skipped — the failed step is treated as satisfied
-    # It would be enqueued (which uses real GoodJob::Batch in the demo app)
     refute pipeline.reload.halt_triggered?
   end
 
@@ -251,7 +242,6 @@ class TestCoordinator < ActiveSupport::TestCase
     step = build_step(pipeline, key: "a")
     step.update_columns(coordination_status: "enqueued")
 
-    # Should not raise or change anything
     GoodPipeline::Coordinator.try_enqueue_step(step.id)
     assert_equal "enqueued", step.reload.coordination_status
   end
@@ -270,7 +260,6 @@ class TestCoordinator < ActiveSupport::TestCase
     step_a = build_step(pipeline, key: "a")
     step_b = build_step(pipeline, key: "b", dependencies: [step_a])
 
-    # step_a is still pending, so step_b's upstream is not satisfied
     GoodPipeline::Coordinator.try_enqueue_step(step_b.id)
     assert_equal "pending", step_b.reload.coordination_status
   end
