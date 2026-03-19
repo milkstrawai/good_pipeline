@@ -6,4 +6,5 @@ Rails.application.configure do
   config.consider_all_requests_local = true
   config.action_controller.perform_caching = false if config.respond_to?(:action_controller)
   config.active_support.deprecation = :stderr
+  config.good_job.execution_mode = :external
 end

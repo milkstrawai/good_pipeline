@@ -34,6 +34,7 @@ class TestRunner < ActiveSupport::TestCase
     record = GoodPipeline::Runner.call(instance)
 
     steps = record.steps.order(:key)
+
     assert_equal 3, steps.count
     assert_equal %w[download thumbnail transcode], steps.map(&:key)
     assert_equal "DownloadJob", steps.find_by(key: "download").job_class
@@ -47,6 +48,7 @@ class TestRunner < ActiveSupport::TestCase
     record = GoodPipeline::Runner.call(instance)
 
     deps = record.dependencies
+
     assert_equal 2, deps.count
 
     download = record.steps.find_by(key: "download")
@@ -54,9 +56,11 @@ class TestRunner < ActiveSupport::TestCase
     thumbnail = record.steps.find_by(key: "thumbnail")
 
     transcode_dep = deps.find_by(step: transcode)
+
     assert_equal download.id, transcode_dep.depends_on_step_id
 
     thumbnail_dep = deps.find_by(step: thumbnail)
+
     assert_equal download.id, thumbnail_dep.depends_on_step_id
   end
 

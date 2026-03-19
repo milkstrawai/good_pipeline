@@ -11,7 +11,7 @@ class TestStepFinishedJob < ActiveSupport::TestCase
 
     batch = GoodJob::Batch.new
     batch.properties = { step_id: step.id }
-    batch.enqueue { }
+    batch.enqueue {}
 
     GoodPipeline::StepFinishedJob.new.perform(batch, {})
 
@@ -26,7 +26,7 @@ class TestStepFinishedJob < ActiveSupport::TestCase
 
     batch = GoodJob::Batch.new
     batch.properties = { step_id: step.id }
-    batch.enqueue { }
+    batch.enqueue {}
     GoodJob::BatchRecord.where(id: batch.id).update_all(discarded_at: Time.current)
     batch = GoodJob::Batch.find(batch.id)
 

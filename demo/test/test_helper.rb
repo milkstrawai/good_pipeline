@@ -7,6 +7,12 @@ require "minitest/autorun"
 
 ActiveJob::Base.logger = Logger.new(nil)
 
+# Create attempt_trackers table for retry tests
+ActiveRecord::Base.connection.create_table :attempt_trackers, if_not_exists: true do |t|
+  t.string :key, null: false
+  t.integer :count, default: 0, null: false
+end
+
 module ActiveSupport
   class TestCase
     self.use_transactional_tests = false
@@ -16,6 +22,27 @@ module ActiveSupport
     end
 
     private
+
+    def rails_promise(&block)
+      Concurrent::Promises.future do
+        Rails.application.executor.wrap(&block)
+      end
+    end
+
+    def perform_enqueued_jobs_inline
+      GoodJob.perform_inline
+    end
+
+    def wait_until(timeout: 10, interval: 0.1)
+      deadline = Time.current + timeout
+      loop do
+        return if yield
+
+        raise "Timeout waiting for condition" if Time.current > deadline
+
+        sleep interval
+      end
+    end
 
     def create_pipeline(**attributes)
       GoodPipeline::PipelineRecord.create!(
@@ -33,8 +60,8 @@ module ActiveSupport
       )
     end
 
-    def build_step(pipeline, key:, dependencies: [], on_failure_strategy: nil)
-      step = create_step(pipeline, key: key, on_failure_strategy: on_failure_strategy)
+    def build_step(pipeline, key:, dependencies: [], on_failure_strategy: nil, **attributes)
+      step = create_step(pipeline, key: key, on_failure_strategy: on_failure_strategy, **attributes)
       dependencies.each do |dependency_step|
         GoodPipeline::DependencyRecord.create!(pipeline: pipeline, step: step, depends_on_step: dependency_step)
       end

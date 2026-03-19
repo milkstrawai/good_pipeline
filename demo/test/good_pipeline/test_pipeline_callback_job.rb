@@ -87,7 +87,7 @@ class TestPipelineCallbackJob < ActiveSupport::TestCase
   def test_error_in_callback_is_raised
     log = @callback_log
     klass = Class.new(GoodPipeline::Pipeline) do
-      self.on_complete(:exploding_callback)
+      on_complete(:exploding_callback)
 
       define_method(:exploding_callback) do
         log << :exploded
@@ -109,8 +109,8 @@ class TestPipelineCallbackJob < ActiveSupport::TestCase
   def test_error_in_first_callback_still_runs_second
     log = @callback_log
     klass = Class.new(GoodPipeline::Pipeline) do
-      self.on_complete(:exploding_complete)
-      self.on_success(:record_success)
+      on_complete(:exploding_complete)
+      on_success(:record_success)
 
       define_method(:exploding_complete) do
         log << :complete_exploded

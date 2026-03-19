@@ -8,12 +8,14 @@ class TestStepRecord < ActiveSupport::TestCase
   def test_default_coordination_status_is_pending
     pipeline = create_pipeline
     step = create_step(pipeline)
+
     assert_equal "pending", step.coordination_status
   end
 
   def test_default_observed_status_is_nil
     pipeline = create_pipeline
     step = create_step(pipeline)
+
     assert_nil step.observed_status
   end
 
@@ -22,6 +24,7 @@ class TestStepRecord < ActiveSupport::TestCase
   def test_id_is_uuid
     pipeline = create_pipeline
     step = create_step(pipeline)
+
     assert_match(/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/, step.id)
   end
 
@@ -30,35 +33,40 @@ class TestStepRecord < ActiveSupport::TestCase
   def test_terminal_returns_false_for_pending
     pipeline = create_pipeline
     step = create_step(pipeline)
-    refute step.terminal_coordination_status?
+
+    refute_predicate step, :terminal_coordination_status?
   end
 
   def test_terminal_returns_false_for_enqueued
     pipeline = create_pipeline
     step = create_step(pipeline)
     step.update_columns(coordination_status: "enqueued")
-    refute step.terminal_coordination_status?
+
+    refute_predicate step, :terminal_coordination_status?
   end
 
   def test_terminal_returns_true_for_succeeded
     pipeline = create_pipeline
     step = create_step(pipeline)
     step.update_columns(coordination_status: "succeeded")
-    assert step.terminal_coordination_status?
+
+    assert_predicate step, :terminal_coordination_status?
   end
 
   def test_terminal_returns_true_for_failed
     pipeline = create_pipeline
     step = create_step(pipeline)
     step.update_columns(coordination_status: "failed")
-    assert step.terminal_coordination_status?
+
+    assert_predicate step, :terminal_coordination_status?
   end
 
   def test_terminal_returns_true_for_skipped
     pipeline = create_pipeline
     step = create_step(pipeline)
     step.update_columns(coordination_status: "skipped")
-    assert step.terminal_coordination_status?
+
+    assert_predicate step, :terminal_coordination_status?
   end
 
   # --- transition_coordination_status_to! valid transitions ---
@@ -67,6 +75,7 @@ class TestStepRecord < ActiveSupport::TestCase
     pipeline = create_pipeline
     step = create_step(pipeline)
     step.transition_coordination_status_to!(:enqueued)
+
     assert_equal "enqueued", step.coordination_status
   end
 
@@ -74,6 +83,7 @@ class TestStepRecord < ActiveSupport::TestCase
     pipeline = create_pipeline
     step = create_step(pipeline)
     step.transition_coordination_status_to!(:skipped)
+
     assert_equal "skipped", step.coordination_status
   end
 
@@ -82,6 +92,7 @@ class TestStepRecord < ActiveSupport::TestCase
     step = create_step(pipeline)
     step.transition_coordination_status_to!(:enqueued)
     step.transition_coordination_status_to!(:succeeded)
+
     assert_equal "succeeded", step.coordination_status
   end
 
@@ -90,6 +101,7 @@ class TestStepRecord < ActiveSupport::TestCase
     step = create_step(pipeline)
     step.transition_coordination_status_to!(:enqueued)
     step.transition_coordination_status_to!(:failed)
+
     assert_equal "failed", step.coordination_status
   end
 
@@ -177,6 +189,7 @@ class TestStepRecord < ActiveSupport::TestCase
     pipeline = create_pipeline
     step = create_step(pipeline)
     step.transition_coordination_status_to!(:enqueued)
+
     assert_equal "enqueued", step.coordination_status
   end
 

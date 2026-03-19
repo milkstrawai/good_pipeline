@@ -73,7 +73,7 @@ module GoodPipeline
         job.queue_name = step.queue if step.queue.present?
         job.priority = step.priority if step.priority.present?
         enqueued_job = job.enqueue
-        step.update_column(:good_job_id, enqueued_job.provider_job_id)
+        step.update_column(:good_job_id, enqueued_job.provider_job_id || enqueued_job.job_id)
       end
 
       step.update_column(:good_job_batch_id, batch.id)

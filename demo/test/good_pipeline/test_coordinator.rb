@@ -27,6 +27,7 @@ class TestCoordinator < ActiveSupport::TestCase
     step.reload
 
     GoodPipeline::Coordinator.complete_step(step, succeeded: true)
+
     assert_equal "succeeded", step.reload.coordination_status
   end
 
@@ -42,6 +43,7 @@ class TestCoordinator < ActiveSupport::TestCase
     GoodPipeline::Coordinator.complete_step(step, succeeded: true)
 
     step.reload
+
     assert_equal "succeeded", step.coordination_status
     refute_nil step.finished_at
   end
@@ -59,6 +61,7 @@ class TestCoordinator < ActiveSupport::TestCase
     GoodPipeline::Coordinator.complete_step(step, succeeded: false)
 
     step.reload
+
     assert_equal "failed", step.coordination_status
     refute_nil step.finished_at
     assert_equal "RuntimeError", step.error_class
@@ -75,6 +78,7 @@ class TestCoordinator < ActiveSupport::TestCase
     build_step(pipeline, key: "b")
 
     GoodPipeline::Coordinator.recompute_pipeline_status(pipeline)
+
     assert_equal "running", pipeline.reload.status
   end
 
@@ -87,6 +91,7 @@ class TestCoordinator < ActiveSupport::TestCase
     step_b.update_columns(coordination_status: "succeeded")
 
     GoodPipeline::Coordinator.recompute_pipeline_status(pipeline.reload)
+
     assert_equal "succeeded", pipeline.reload.status
   end
 
@@ -99,6 +104,7 @@ class TestCoordinator < ActiveSupport::TestCase
     step_b.update_columns(coordination_status: "skipped")
 
     GoodPipeline::Coordinator.recompute_pipeline_status(pipeline.reload)
+
     assert_equal "halted", pipeline.reload.status
   end
 
@@ -111,6 +117,7 @@ class TestCoordinator < ActiveSupport::TestCase
     step_b.update_columns(coordination_status: "succeeded")
 
     GoodPipeline::Coordinator.recompute_pipeline_status(pipeline.reload)
+
     assert_equal "failed", pipeline.reload.status
   end
 
@@ -120,6 +127,7 @@ class TestCoordinator < ActiveSupport::TestCase
     build_step(pipeline, key: "a").update_columns(coordination_status: "succeeded")
 
     GoodPipeline::Coordinator.recompute_pipeline_status(pipeline.reload)
+
     assert_equal "succeeded", pipeline.reload.status
   end
 
@@ -133,6 +141,7 @@ class TestCoordinator < ActiveSupport::TestCase
     GoodPipeline::Coordinator.recompute_pipeline_status(pipeline.reload)
 
     pipeline.reload
+
     assert_equal "succeeded", pipeline.status
     refute_nil pipeline.callbacks_dispatched_at
   end
@@ -147,6 +156,7 @@ class TestCoordinator < ActiveSupport::TestCase
 
     # Call again — should not change anything
     GoodPipeline::Coordinator.recompute_pipeline_status(pipeline.reload)
+
     assert_equal first_dispatched_at, pipeline.reload.callbacks_dispatched_at
   end
 
@@ -165,7 +175,7 @@ class TestCoordinator < ActiveSupport::TestCase
     assert_equal "failed", step_a.reload.coordination_status
     assert_equal "skipped", step_b.reload.coordination_status
     assert_equal "skipped", step_c.reload.coordination_status
-    assert pipeline.reload.halt_triggered?
+    assert_predicate pipeline.reload, :halt_triggered?
     assert_equal "halted", pipeline.status
   end
 
@@ -184,7 +194,7 @@ class TestCoordinator < ActiveSupport::TestCase
     refute_equal "skipped", step_b.reload.coordination_status
     # step_c is unrelated — should be skipped under :halt
     assert_equal "skipped", step_c.reload.coordination_status
-    assert pipeline.reload.halt_triggered?
+    assert_predicate pipeline.reload, :halt_triggered?
   end
 
   # --- Continue strategy ---
@@ -203,7 +213,7 @@ class TestCoordinator < ActiveSupport::TestCase
     assert_equal "failed", step_a.reload.coordination_status
     assert_equal "skipped", step_c.reload.coordination_status
     assert_equal "succeeded", step_b.reload.coordination_status
-    refute pipeline.reload.halt_triggered?
+    refute_predicate pipeline.reload, :halt_triggered?
     assert_equal "failed", pipeline.reload.status
   end
 
@@ -219,7 +229,7 @@ class TestCoordinator < ActiveSupport::TestCase
     GoodPipeline::Coordinator.complete_step(step_a.reload, succeeded: false)
 
     assert_equal "failed", step_a.reload.coordination_status
-    refute pipeline.reload.halt_triggered?
+    refute_predicate pipeline.reload, :halt_triggered?
   end
 
   # --- Single-step pipeline reaches terminal ---
@@ -243,6 +253,7 @@ class TestCoordinator < ActiveSupport::TestCase
     step.update_columns(coordination_status: "enqueued")
 
     GoodPipeline::Coordinator.try_enqueue_step(step.id)
+
     assert_equal "enqueued", step.reload.coordination_status
   end
 
@@ -252,6 +263,7 @@ class TestCoordinator < ActiveSupport::TestCase
     step.update_columns(good_job_id: SecureRandom.uuid)
 
     GoodPipeline::Coordinator.try_enqueue_step(step.id)
+
     assert_equal "pending", step.reload.coordination_status
   end
 
@@ -261,6 +273,7 @@ class TestCoordinator < ActiveSupport::TestCase
     step_b = build_step(pipeline, key: "b", dependencies: [step_a])
 
     GoodPipeline::Coordinator.try_enqueue_step(step_b.id)
+
     assert_equal "pending", step_b.reload.coordination_status
   end
 
@@ -271,6 +284,7 @@ class TestCoordinator < ActiveSupport::TestCase
     step_a.update_columns(coordination_status: "failed")
 
     GoodPipeline::Coordinator.try_enqueue_step(step_b.id)
+
     assert_equal "skipped", step_b.reload.coordination_status
   end
 end

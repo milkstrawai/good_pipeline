@@ -3,17 +3,18 @@
 require "test_helper"
 
 class TestEndToEnd < ActiveSupport::TestCase
-  def wait_for_pipeline(pipeline_record, timeout: 10)
+  def run_pipeline_to_completion(pipeline_record, timeout: 15)
     deadline = Time.current + timeout
     loop do
+      perform_enqueued_jobs_inline
       pipeline_record.reload
       return pipeline_record if pipeline_record.terminal?
 
       if Time.current > deadline
-        raise "Pipeline #{pipeline_record.id} did not reach terminal state within #{timeout}s (status: #{pipeline_record.status})"
+        raise "Pipeline did not reach terminal state within #{timeout}s (status: #{pipeline_record.status})"
       end
 
-      sleep 0.1
+      sleep 0.05
     end
   end
 
@@ -26,7 +27,7 @@ class TestEndToEnd < ActiveSupport::TestCase
     assert_equal 5, pipeline_record.steps.count
     assert_equal 5, pipeline_record.dependencies.count
 
-    result = wait_for_pipeline(pipeline_record)
+    result = run_pipeline_to_completion(pipeline_record)
 
     assert_equal "succeeded", result.status
     assert(result.steps.all? { |step| step.coordination_status == "succeeded" })
@@ -46,13 +47,14 @@ class TestEndToEnd < ActiveSupport::TestCase
 
     pipeline_record = HaltTestPipeline.run
 
-    result = wait_for_pipeline(pipeline_record)
+    result = run_pipeline_to_completion(pipeline_record)
 
     assert_equal "halted", result.status
-    assert result.halt_triggered?
+    assert_predicate result, :halt_triggered?
 
     step_a = result.steps.find_by(key: "step_a")
     step_b = result.steps.find_by(key: "step_b")
+
     assert_equal "failed", step_a.coordination_status
     assert_equal "skipped", step_b.coordination_status
   end
@@ -71,14 +73,15 @@ class TestEndToEnd < ActiveSupport::TestCase
 
     pipeline_record = ContinueTestPipeline.run
 
-    result = wait_for_pipeline(pipeline_record)
+    result = run_pipeline_to_completion(pipeline_record)
 
     assert_equal "failed", result.status
-    refute result.halt_triggered?
+    refute_predicate result, :halt_triggered?
 
     step_a = result.steps.find_by(key: "step_a")
     step_b = result.steps.find_by(key: "step_b")
     step_c = result.steps.find_by(key: "step_c")
+
     assert_equal "failed", step_a.coordination_status
     assert_equal "succeeded", step_b.coordination_status
     assert_equal "skipped", step_c.coordination_status

@@ -7,16 +7,19 @@ class TestPipelineRecord < ActiveSupport::TestCase
 
   def test_default_status_is_pending
     pipeline = create_pipeline
+
     assert_equal "pending", pipeline.status
   end
 
   def test_default_halt_triggered_is_false
     pipeline = create_pipeline
+
     assert_equal false, pipeline.halt_triggered
   end
 
   def test_default_params_is_empty_hash
     pipeline = create_pipeline
+
     assert_equal({}, pipeline.params)
   end
 
@@ -24,6 +27,7 @@ class TestPipelineRecord < ActiveSupport::TestCase
 
   def test_id_is_uuid
     pipeline = create_pipeline
+
     assert_match(/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/, pipeline.id)
   end
 
@@ -32,6 +36,7 @@ class TestPipelineRecord < ActiveSupport::TestCase
   def test_type_column_does_not_trigger_sti
     pipeline = create_pipeline(type: "VideoProcessingPipeline")
     reloaded = GoodPipeline::PipelineRecord.find(pipeline.id)
+
     assert_instance_of GoodPipeline::PipelineRecord, reloaded
     assert_equal "VideoProcessingPipeline", reloaded.type
   end
@@ -40,37 +45,43 @@ class TestPipelineRecord < ActiveSupport::TestCase
 
   def test_terminal_returns_false_for_pending
     pipeline = create_pipeline
-    refute pipeline.terminal?
+
+    refute_predicate pipeline, :terminal?
   end
 
   def test_terminal_returns_false_for_running
     pipeline = create_pipeline
     pipeline.update_columns(status: "running")
-    refute pipeline.terminal?
+
+    refute_predicate pipeline, :terminal?
   end
 
   def test_terminal_returns_true_for_succeeded
     pipeline = create_pipeline
     pipeline.update_columns(status: "succeeded")
-    assert pipeline.terminal?
+
+    assert_predicate pipeline, :terminal?
   end
 
   def test_terminal_returns_true_for_failed
     pipeline = create_pipeline
     pipeline.update_columns(status: "failed")
-    assert pipeline.terminal?
+
+    assert_predicate pipeline, :terminal?
   end
 
   def test_terminal_returns_true_for_halted
     pipeline = create_pipeline
     pipeline.update_columns(status: "halted")
-    assert pipeline.terminal?
+
+    assert_predicate pipeline, :terminal?
   end
 
   def test_terminal_returns_true_for_skipped
     pipeline = create_pipeline
     pipeline.update_columns(status: "skipped")
-    assert pipeline.terminal?
+
+    assert_predicate pipeline, :terminal?
   end
 
   # --- transition_to! valid transitions ---
@@ -78,12 +89,14 @@ class TestPipelineRecord < ActiveSupport::TestCase
   def test_transition_pending_to_running
     pipeline = create_pipeline
     pipeline.transition_to!(:running)
+
     assert_equal "running", pipeline.status
   end
 
   def test_transition_pending_to_skipped
     pipeline = create_pipeline
     pipeline.transition_to!(:skipped)
+
     assert_equal "skipped", pipeline.status
   end
 
@@ -91,6 +104,7 @@ class TestPipelineRecord < ActiveSupport::TestCase
     pipeline = create_pipeline
     pipeline.transition_to!(:running)
     pipeline.transition_to!(:succeeded)
+
     assert_equal "succeeded", pipeline.status
   end
 
@@ -98,6 +112,7 @@ class TestPipelineRecord < ActiveSupport::TestCase
     pipeline = create_pipeline
     pipeline.transition_to!(:running)
     pipeline.transition_to!(:failed)
+
     assert_equal "failed", pipeline.status
   end
 
@@ -105,6 +120,7 @@ class TestPipelineRecord < ActiveSupport::TestCase
     pipeline = create_pipeline
     pipeline.transition_to!(:running)
     pipeline.transition_to!(:halted)
+
     assert_equal "halted", pipeline.status
   end
 
@@ -161,6 +177,7 @@ class TestPipelineRecord < ActiveSupport::TestCase
   def test_transition_to_accepts_symbols
     pipeline = create_pipeline
     pipeline.transition_to!(:running)
+
     assert_equal "running", pipeline.status
   end
 end
