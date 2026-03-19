@@ -27,8 +27,8 @@ module GoodPipeline
     end
 
     def self.raise_cycle!(path, neighbor)
-      cycle = path.drop_while { |n| n != neighbor } + [neighbor]
-      raise InvalidPipelineError, "cycle detected: #{cycle.map { |k| ":#{k}" }.join(" -> ")}"
+      cycle = path.drop_while { |node| node != neighbor } + [neighbor]
+      raise InvalidPipelineError, "cycle detected: #{cycle.map { |key| ":#{key}" }.join(" -> ")}"
     end
 
     private_class_method :dfs, :raise_cycle!
