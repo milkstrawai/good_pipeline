@@ -1,10 +1,8 @@
 # frozen_string_literal: true
 
-require "active_record_test_helper"
+require "test_helper"
 
-class TestChainRecord < Minitest::Test
-  include ActiveRecordTestCase
-
+class TestChainRecord < ActiveSupport::TestCase
   # --- Pipeline chain navigation ---
   #
   # A -> B -> C

@@ -1,10 +1,8 @@
 # frozen_string_literal: true
 
-require "active_record_test_helper"
+require "test_helper"
 
-class TestPipelineRecord < Minitest::Test
-  include ActiveRecordTestCase
-
+class TestPipelineRecord < ActiveSupport::TestCase
   # --- Defaults ---
 
   def test_default_status_is_pending

@@ -1,19 +1,13 @@
 # frozen_string_literal: true
 
-require "active_record_test_helper"
+require "test_helper"
 
-class TestStepFinishedJob < Minitest::Test
-  include ActiveRecordTestCase
-
+class TestStepFinishedJob < ActiveSupport::TestCase
   def test_delegates_to_coordinator_with_correct_args
     pipeline = create_pipeline
     pipeline.update_columns(status: "running")
     step = create_step(pipeline, key: "a")
     step.update_columns(coordination_status: "enqueued")
-
-    batch = MockBatch.new
-    batch.properties = { step_id: step.id }
-    batch._set_succeeded(true)
 
     GoodPipeline::Coordinator.complete_step(step.reload, succeeded: true)
 

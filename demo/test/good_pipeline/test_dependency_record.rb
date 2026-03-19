@@ -1,10 +1,8 @@
 # frozen_string_literal: true
 
-require "active_record_test_helper"
+require "test_helper"
 
-class TestDependencyRecord < Minitest::Test
-  include ActiveRecordTestCase
-
+class TestDependencyRecord < ActiveSupport::TestCase
   # --- Diamond DAG graph navigation ---
   #
   #   A

@@ -13,3 +13,4 @@ gem "minitest", "~> 5.16"
 gem "rubocop", "~> 1.21"
 
 gem "pg"
+gem "rails", ">= 7.1"

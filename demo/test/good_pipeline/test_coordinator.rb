@@ -1,31 +1,12 @@
 # frozen_string_literal: true
 
-require "active_record_test_helper"
+require "test_helper"
 
-class TestCoordinator < Minitest::Test
-  include ActiveRecordTestCase
-
-  DummyJob = Class.new
-
-  # --- Helper to build a pipeline with steps and deps ---
-
-  def build_pipeline(on_failure_strategy: "halt")
-    create_pipeline(type: "TestPipeline", on_failure_strategy: on_failure_strategy)
-  end
-
-  def build_step(pipeline, key:, deps: [], on_failure_strategy: nil)
-    step = create_step(pipeline, key: key, job_class: "TestCoordinator::DummyJob",
-                                 on_failure_strategy: on_failure_strategy)
-    deps.each do |dep_step|
-      GoodPipeline::DependencyRecord.create!(pipeline: pipeline, step: step, depends_on_step: dep_step)
-    end
-    step
-  end
-
+class TestCoordinator < ActiveSupport::TestCase
   # --- complete_step: idempotency ---
 
   def test_complete_step_idempotent_on_terminal_step
-    pipeline = build_pipeline
+    pipeline = create_pipeline(on_failure_strategy: "halt")
     step = build_step(pipeline, key: "a")
     step.update_columns(coordination_status: "succeeded", finished_at: Time.current)
     step.reload
@@ -38,7 +19,7 @@ class TestCoordinator < Minitest::Test
   # --- complete_step: succeeded ---
 
   def test_complete_step_succeeded_transitions_and_sets_finished_at
-    pipeline = build_pipeline
+    pipeline = create_pipeline(on_failure_strategy: "halt")
     pipeline.update_columns(status: "running")
     step = build_step(pipeline, key: "a")
     step.update_columns(coordination_status: "enqueued")
@@ -54,7 +35,7 @@ class TestCoordinator < Minitest::Test
   # --- complete_step: failed ---
 
   def test_complete_step_failed_transitions_and_sets_metadata
-    pipeline = build_pipeline
+    pipeline = create_pipeline(on_failure_strategy: "halt")
     pipeline.update_columns(status: "running")
     step = build_step(pipeline, key: "a")
     step.update_columns(coordination_status: "enqueued")
@@ -81,7 +62,7 @@ class TestCoordinator < Minitest::Test
   # --- recompute_pipeline_status: derivation ---
 
   def test_recompute_returns_early_when_steps_not_all_terminal
-    pipeline = build_pipeline
+    pipeline = create_pipeline(on_failure_strategy: "halt")
     pipeline.update_columns(status: "running")
     build_step(pipeline, key: "a")
     build_step(pipeline, key: "b")
@@ -91,7 +72,7 @@ class TestCoordinator < Minitest::Test
   end
 
   def test_recompute_derives_succeeded_when_all_steps_succeeded
-    pipeline = build_pipeline
+    pipeline = create_pipeline(on_failure_strategy: "halt")
     pipeline.update_columns(status: "running")
     step_a = build_step(pipeline, key: "a")
     step_b = build_step(pipeline, key: "b")
@@ -103,7 +84,7 @@ class TestCoordinator < Minitest::Test
   end
 
   def test_recompute_derives_halted_when_halt_triggered
-    pipeline = build_pipeline
+    pipeline = create_pipeline(on_failure_strategy: "halt")
     pipeline.update_columns(status: "running", halt_triggered: true)
     step_a = build_step(pipeline, key: "a")
     step_b = build_step(pipeline, key: "b")
@@ -115,7 +96,7 @@ class TestCoordinator < Minitest::Test
   end
 
   def test_recompute_derives_failed_when_no_halt_triggered
-    pipeline = build_pipeline(on_failure_strategy: "continue")
+    pipeline = create_pipeline(on_failure_strategy: "continue")
     pipeline.update_columns(status: "running")
     step_a = build_step(pipeline, key: "a")
     step_b = build_step(pipeline, key: "b")
@@ -127,7 +108,7 @@ class TestCoordinator < Minitest::Test
   end
 
   def test_recompute_is_idempotent_on_terminal_pipeline
-    pipeline = build_pipeline
+    pipeline = create_pipeline(on_failure_strategy: "halt")
     pipeline.update_columns(status: "succeeded", callbacks_dispatched_at: Time.current)
     build_step(pipeline, key: "a").update_columns(coordination_status: "succeeded")
 
@@ -138,7 +119,7 @@ class TestCoordinator < Minitest::Test
   # --- dispatch_callbacks_once ---
 
   def test_dispatch_callbacks_sets_callbacks_dispatched_at
-    pipeline = build_pipeline
+    pipeline = create_pipeline(on_failure_strategy: "halt")
     pipeline.update_columns(status: "running")
     build_step(pipeline, key: "a").update_columns(coordination_status: "succeeded")
 
@@ -150,7 +131,7 @@ class TestCoordinator < Minitest::Test
   end
 
   def test_dispatch_callbacks_exactly_once
-    pipeline = build_pipeline
+    pipeline = create_pipeline(on_failure_strategy: "halt")
     pipeline.update_columns(status: "running")
     build_step(pipeline, key: "a").update_columns(coordination_status: "succeeded")
 
@@ -165,11 +146,11 @@ class TestCoordinator < Minitest::Test
   # --- Halt propagation ---
 
   def test_halt_skips_all_pending_steps
-    pipeline = build_pipeline(on_failure_strategy: "halt")
+    pipeline = create_pipeline(on_failure_strategy: "halt")
     pipeline.update_columns(status: "running")
     step_a = build_step(pipeline, key: "a")
-    step_b = build_step(pipeline, key: "b", deps: [step_a])
-    step_c = build_step(pipeline, key: "c", deps: [step_a])
+    step_b = build_step(pipeline, key: "b", dependencies: [step_a])
+    step_c = build_step(pipeline, key: "c", dependencies: [step_a])
     step_a.update_columns(coordination_status: "enqueued")
 
     result = GoodPipeline::FailureMetadata::Result.new(error_class: nil, error_message: nil, attempts: 1)
@@ -185,23 +166,21 @@ class TestCoordinator < Minitest::Test
   end
 
   def test_halt_with_step_ignore_exempts_dependents
-    pipeline = build_pipeline(on_failure_strategy: "halt")
+    pipeline = create_pipeline(on_failure_strategy: "halt")
     pipeline.update_columns(status: "running")
     step_a = build_step(pipeline, key: "a", on_failure_strategy: "ignore")
-    step_b = build_step(pipeline, key: "b", deps: [step_a])
+    step_b = build_step(pipeline, key: "b", dependencies: [step_a])
     step_c = build_step(pipeline, key: "c")
     step_a.update_columns(coordination_status: "enqueued")
 
     result = GoodPipeline::FailureMetadata::Result.new(error_class: nil, error_message: nil, attempts: 1)
     GoodPipeline::FailureMetadata.stub(:extract, result) do
-      GoodPipeline::Coordinator.stub(:enqueue_user_job, nil) do
-        GoodPipeline::Coordinator.complete_step(step_a.reload, succeeded: false)
-      end
+      GoodPipeline::Coordinator.complete_step(step_a.reload, succeeded: false)
     end
 
     assert_equal "failed", step_a.reload.coordination_status
     # step_b is a direct dependent of step_a (which has on_failure: :ignore) — should NOT be skipped
-    assert_equal "pending", step_b.reload.coordination_status
+    refute_equal "skipped", step_b.reload.coordination_status
     # step_c is unrelated — should be skipped under :halt
     assert_equal "skipped", step_c.reload.coordination_status
     assert pipeline.reload.halt_triggered?
@@ -210,11 +189,11 @@ class TestCoordinator < Minitest::Test
   # --- Continue strategy ---
 
   def test_continue_skips_only_unsatisfied_descendants
-    pipeline = build_pipeline(on_failure_strategy: "continue")
+    pipeline = create_pipeline(on_failure_strategy: "continue")
     pipeline.update_columns(status: "running")
     step_a = build_step(pipeline, key: "a")
     step_b = build_step(pipeline, key: "b")
-    step_c = build_step(pipeline, key: "c", deps: [step_a])
+    step_c = build_step(pipeline, key: "c", dependencies: [step_a])
     step_a.update_columns(coordination_status: "enqueued")
     step_b.update_columns(coordination_status: "succeeded")
 
@@ -235,30 +214,27 @@ class TestCoordinator < Minitest::Test
   # --- Ignore strategy ---
 
   def test_ignore_nothing_skipped
-    pipeline = build_pipeline(on_failure_strategy: "ignore")
+    pipeline = create_pipeline(on_failure_strategy: "ignore")
     pipeline.update_columns(status: "running")
     step_a = build_step(pipeline, key: "a")
-    build_step(pipeline, key: "b", deps: [step_a])
+    build_step(pipeline, key: "b", dependencies: [step_a])
     step_a.update_columns(coordination_status: "enqueued")
 
     result = GoodPipeline::FailureMetadata::Result.new(error_class: nil, error_message: nil, attempts: 1)
     GoodPipeline::FailureMetadata.stub(:extract, result) do
-      # Stub enqueue_user_job since we can't actually enqueue
-      GoodPipeline::Coordinator.stub(:enqueue_user_job, nil) do
-        GoodPipeline::Coordinator.complete_step(step_a.reload, succeeded: false)
-      end
+      GoodPipeline::Coordinator.complete_step(step_a.reload, succeeded: false)
     end
 
     assert_equal "failed", step_a.reload.coordination_status
     # Under :ignore, step_b should NOT be skipped — the failed step is treated as satisfied
-    # It would be enqueued (which we stubbed)
+    # It would be enqueued (which uses real GoodJob::Batch in the demo app)
     refute pipeline.reload.halt_triggered?
   end
 
   # --- Single-step pipeline reaches terminal ---
 
   def test_single_step_pipeline_succeeds
-    pipeline = build_pipeline
+    pipeline = create_pipeline(on_failure_strategy: "halt")
     pipeline.update_columns(status: "running")
     step = build_step(pipeline, key: "a")
     step.update_columns(coordination_status: "enqueued")
@@ -271,7 +247,7 @@ class TestCoordinator < Minitest::Test
   # --- try_enqueue_step ---
 
   def test_try_enqueue_bails_on_non_pending_step
-    pipeline = build_pipeline
+    pipeline = create_pipeline(on_failure_strategy: "halt")
     step = build_step(pipeline, key: "a")
     step.update_columns(coordination_status: "enqueued")
 
@@ -281,7 +257,7 @@ class TestCoordinator < Minitest::Test
   end
 
   def test_try_enqueue_bails_when_good_job_id_present
-    pipeline = build_pipeline
+    pipeline = create_pipeline(on_failure_strategy: "halt")
     step = build_step(pipeline, key: "a")
     step.update_columns(good_job_id: SecureRandom.uuid)
 
@@ -290,9 +266,9 @@ class TestCoordinator < Minitest::Test
   end
 
   def test_try_enqueue_bails_when_upstreams_not_satisfied
-    pipeline = build_pipeline
+    pipeline = create_pipeline(on_failure_strategy: "halt")
     step_a = build_step(pipeline, key: "a")
-    step_b = build_step(pipeline, key: "b", deps: [step_a])
+    step_b = build_step(pipeline, key: "b", dependencies: [step_a])
 
     # step_a is still pending, so step_b's upstream is not satisfied
     GoodPipeline::Coordinator.try_enqueue_step(step_b.id)
@@ -300,9 +276,9 @@ class TestCoordinator < Minitest::Test
   end
 
   def test_try_enqueue_skips_permanently_unsatisfied_step
-    pipeline = build_pipeline(on_failure_strategy: "continue")
+    pipeline = create_pipeline(on_failure_strategy: "continue")
     step_a = build_step(pipeline, key: "a")
-    step_b = build_step(pipeline, key: "b", deps: [step_a])
+    step_b = build_step(pipeline, key: "b", dependencies: [step_a])
     step_a.update_columns(coordination_status: "failed")
 
     GoodPipeline::Coordinator.try_enqueue_step(step_b.id)

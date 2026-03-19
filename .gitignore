@@ -7,6 +7,11 @@
 /spec/reports/
 /tmp/
 
+### Demo app ###
+/demo/tmp/
+/demo/log/
+/demo/db/schema.rb
+
 # Created by https://www.toptal.com/developers/gitignore/api/ruby,linux,windows,macos,dotenv
 # Edit at https://www.toptal.com/developers/gitignore?templates=ruby,linux,windows,macos,dotenv
 

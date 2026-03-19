@@ -1,10 +1,8 @@
 # frozen_string_literal: true
 
-require "active_record_test_helper"
+require "test_helper"
 
-class TestPipelineCallbackJob < Minitest::Test
-  include ActiveRecordTestCase
-
+class TestPipelineCallbackJob < ActiveSupport::TestCase
   def setup
     super
     @callback_log = []
