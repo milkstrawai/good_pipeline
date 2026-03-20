@@ -2,7 +2,7 @@
 
 module GoodPipeline
   class PipelineCallbackJob < ActiveJob::Base
-    CALLBACK_STATUSES = %w[succeeded failed halted].freeze
+    CALLBACK_STATUSES = %w[succeeded failed halted skipped].freeze
 
     def perform(pipeline_id, terminal_status) # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
       unless CALLBACK_STATUSES.include?(terminal_status)

@@ -80,8 +80,8 @@ class TestPipelineCallbackJob < ActiveSupport::TestCase
     pipeline = create_pipeline(type: self.class::InvalidStatusPipeline.name)
     job = GoodPipeline::PipelineCallbackJob.new
 
-    assert_raises(ArgumentError) { job.perform(pipeline.id, "skipped") }
     assert_raises(ArgumentError) { job.perform(pipeline.id, "invalid") }
+    assert_raises(ArgumentError) { job.perform(pipeline.id, "pending") }
   end
 
   def test_error_in_callback_is_raised

@@ -88,6 +88,7 @@ module GoodPipeline
       new_status = derive_terminal_status(steps, pipeline)
       pipeline.transition_to!(new_status)
       dispatch_callbacks_once(pipeline, new_status)
+      ChainCoordinator.propagate_terminal_state(pipeline)
     end
 
     def self.derive_terminal_status(steps, pipeline)
@@ -149,7 +150,6 @@ module GoodPipeline
 
     private_class_method :all_upstreams_satisfied?, :should_skip?, :permanently_unsatisfied?,
                          :skip_all_pending_steps, :effective_strategy,
-                         :enqueue_user_job, :dispatch_callbacks_once,
-                         :derive_terminal_status
+                         :enqueue_user_job, :derive_terminal_status
   end
 end

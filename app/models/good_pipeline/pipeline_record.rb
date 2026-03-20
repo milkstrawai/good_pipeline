@@ -41,11 +41,19 @@ module GoodPipeline
              inverse_of: :upstream_pipeline,
              dependent: :delete_all
 
+    has_many :downstream_pipelines,
+             through: :downstream_chains,
+             source: :downstream_pipeline
+
     has_many :upstream_chains,
              class_name: "GoodPipeline::ChainRecord",
              foreign_key: :downstream_pipeline_id,
              inverse_of: :downstream_pipeline,
              dependent: :delete_all
+
+    has_many :upstream_pipelines,
+             through: :upstream_chains,
+             source: :upstream_pipeline
 
     def terminal?
       TERMINAL_STATUSES.include?(status)

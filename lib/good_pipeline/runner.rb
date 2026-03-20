@@ -2,15 +2,15 @@
 
 module GoodPipeline
   class Runner
-    def self.call(pipeline_instance)
-      new(pipeline_instance).call
+    def self.call(pipeline_instance, start: true)
+      new(pipeline_instance).call(start: start)
     end
 
     def initialize(pipeline_instance)
       @pipeline = pipeline_instance
     end
 
-    def call # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
+    def call(start: true) # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
       pipeline_record = nil
       step_records = {}
 
@@ -48,11 +48,13 @@ module GoodPipeline
         pipeline_batch.save
         pipeline_record.update_column(:good_job_batch_id, pipeline_batch.id)
 
-        pipeline_record.transition_to!(:running)
+        pipeline_record.transition_to!(:running) if start
       end
 
-      @pipeline.root_steps.each do |step_definition|
-        Coordinator.try_enqueue_step(step_records[step_definition.key].id)
+      if start
+        @pipeline.root_steps.each do |step_definition|
+          Coordinator.try_enqueue_step(step_records[step_definition.key].id)
+        end
       end
 
       pipeline_record

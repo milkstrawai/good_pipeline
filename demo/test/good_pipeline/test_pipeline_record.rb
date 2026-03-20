@@ -14,7 +14,7 @@ class TestPipelineRecord < ActiveSupport::TestCase
   def test_default_halt_triggered_is_false
     pipeline = create_pipeline
 
-    assert_equal false, pipeline.halt_triggered
+    refute pipeline.halt_triggered
   end
 
   def test_default_params_is_empty_hash

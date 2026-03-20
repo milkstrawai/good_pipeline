@@ -54,7 +54,8 @@ module GoodPipeline
 
       def run(**)
         instance = new(**)
-        Runner.call(instance)
+        pipeline_record = Runner.call(instance)
+        Chain.new(pipeline_record)
       end
 
       def for_callback(pipeline_record)

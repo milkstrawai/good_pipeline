@@ -21,7 +21,7 @@ class TestEndToEnd < ActiveSupport::TestCase
   def test_full_pipeline_succeeds
     pipeline_record = VideoProcessingPipeline.run(video_id: 123)
 
-    assert_instance_of GoodPipeline::PipelineRecord, pipeline_record
+    assert_instance_of GoodPipeline::Chain, pipeline_record
     assert_equal "VideoProcessingPipeline", pipeline_record.type
     assert_equal({ "video_id" => 123 }, pipeline_record.params)
     assert_equal 5, pipeline_record.steps.count
