@@ -2,43 +2,50 @@
 
 module GoodPipeline
   class Coordinator # rubocop:disable Metrics/ClassLength
-    def self.complete_step(step, succeeded:) # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
+    def self.complete_step(step, succeeded:)
       return if step.terminal_coordination_status?
 
-      # Unit 1: Terminal step transition + metadata
+      record_step_outcome(step, succeeded)
+      propagate_halt(step) if !succeeded && step.pipeline.halt?
+      unblock_downstream_steps(step)
+      recompute_pipeline_status(step.pipeline.reload)
+    end
+
+    def self.record_step_outcome(step, succeeded)
       StepRecord.transaction do
         if succeeded
           step.transition_coordination_status_to!(:succeeded)
         else
-          metadata = FailureMetadata.extract(step)
-          step.transition_coordination_status_to!(:failed)
-          step.update_columns(
-            error_class: metadata.error_class,
-            error_message: metadata.error_message,
-            attempts: metadata.attempts
-          )
+          record_step_failure(step)
         end
       end
+    end
 
+    def self.record_step_failure(step)
+      metadata = FailureMetadata.extract(step)
+      step.transition_coordination_status_to!(:failed)
+      step.update_columns(
+        error_class: metadata.error_class,
+        error_message: metadata.error_message,
+        attempts: metadata.attempts
+      )
+    end
+
+    def self.propagate_halt(step)
       pipeline = step.pipeline
-
-      # Halt propagation
-      if !succeeded && pipeline.halt?
-        StepRecord.transaction do
-          pipeline.update_column(:halt_triggered, true)
-          skip_all_pending_steps(pipeline, except_dependents_of: step)
-        end
+      StepRecord.transaction do
+        pipeline.update_column(:halt_triggered, true)
+        skip_all_pending_steps(pipeline, except_dependents_of: step)
       end
+    end
 
-      # Downstream unblocking
+    def self.unblock_downstream_steps(step)
       step.downstream_steps.each do |downstream_step|
         try_enqueue_step(downstream_step.id)
       end
-
-      recompute_pipeline_status(pipeline.reload)
     end
 
-    def self.try_enqueue_step(step_id) # rubocop:disable Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
+    def self.try_enqueue_step(step_id)
       skipped_downstream_ids = nil
 
       StepRecord.transaction do
@@ -46,35 +53,48 @@ module GoodPipeline
         return unless locked_step&.pending?
         return if locked_step.good_job_id.present?
 
-        if should_skip?(locked_step)
-          locked_step.transition_coordination_status_to!(:skipped)
-          skipped_downstream_ids = locked_step.downstream_steps.pluck(:id)
-        else
-          return unless all_upstreams_satisfied?(locked_step)
-
-          enqueue_user_job(locked_step)
-        end
+        skipped_downstream_ids = resolve_step(locked_step)
       end
 
       skipped_downstream_ids&.each { |downstream_step_id| try_enqueue_step(downstream_step_id) }
     end
 
-    def self.enqueue_user_job(step) # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
+    def self.resolve_step(locked_step)
+      if should_skip?(locked_step)
+        locked_step.transition_coordination_status_to!(:skipped)
+        locked_step.downstream_steps.pluck(:id)
+      else
+        enqueue_user_job(locked_step) if all_upstreams_satisfied?(locked_step)
+        nil
+      end
+    end
+
+    def self.enqueue_user_job(step)
       step.transition_coordination_status_to!(:enqueued)
 
+      batch = build_step_batch(step)
+      batch.enqueue { enqueue_step_job(step) }
+      step.update_column(:good_job_batch_id, batch.id)
+    end
+
+    def self.build_step_batch(step)
       batch = GoodJob::Batch.new
       batch.on_finish = "GoodPipeline::StepFinishedJob"
       batch.properties = { step_id: step.id }
+      batch
+    end
 
-      batch.enqueue do
-        job = step.job_class.constantize.new(**step.params.symbolize_keys)
-        job.queue_name = step.queue if step.queue.present?
-        job.priority = step.priority if step.priority.present?
-        enqueued_job = job.enqueue
-        step.update_column(:good_job_id, enqueued_job.provider_job_id || enqueued_job.job_id)
-      end
+    def self.enqueue_step_job(step)
+      job = build_job_instance(step)
+      enqueued_job = job.enqueue
+      step.update_column(:good_job_id, enqueued_job.provider_job_id || enqueued_job.job_id)
+    end
 
-      step.update_column(:good_job_batch_id, batch.id)
+    def self.build_job_instance(step)
+      job = step.job_class.constantize.new(**step.params.symbolize_keys)
+      job.queue_name = step.queue if step.queue.present?
+      job.priority = step.priority if step.priority.present?
+      job
     end
 
     def self.recompute_pipeline_status(pipeline)
@@ -146,8 +166,11 @@ module GoodPipeline
       step.on_failure_strategy&.to_sym || step.pipeline.on_failure_strategy.to_sym
     end
 
-    private_class_method :all_upstreams_satisfied?, :should_skip?, :permanently_unsatisfied?,
+    private_class_method :record_step_outcome, :record_step_failure,
+                         :propagate_halt, :unblock_downstream_steps,
+                         :all_upstreams_satisfied?, :should_skip?, :permanently_unsatisfied?,
                          :skip_all_pending_steps, :effective_strategy,
-                         :enqueue_user_job, :derive_terminal_status
+                         :enqueue_user_job, :build_step_batch, :enqueue_step_job,
+                         :build_job_instance, :derive_terminal_status, :resolve_step
   end
 end

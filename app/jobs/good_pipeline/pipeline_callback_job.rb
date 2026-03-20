@@ -2,7 +2,7 @@
 
 module GoodPipeline
   class PipelineCallbackJob < ActiveJob::Base
-    CALLBACK_STATUSES = %w[succeeded failed halted skipped].freeze
+    CALLBACK_STATUSES = PipelineRecord::TERMINAL_STATUSES
 
     def perform(pipeline_id, terminal_status) # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
       unless CALLBACK_STATUSES.include?(terminal_status)
@@ -21,6 +21,8 @@ module GoodPipeline
         invoke_callback(pipeline, pipeline.on_success_callback, errors)
       when PipelineRecord.statuses[:failed], PipelineRecord.statuses[:halted]
         invoke_callback(pipeline, pipeline.on_failure_callback, errors)
+      when PipelineRecord.statuses[:skipped]
+        # Skipped pipelines only trigger on_complete (already called above)
       end
 
       raise errors.first if errors.any?

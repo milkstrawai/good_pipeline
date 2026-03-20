@@ -18,7 +18,7 @@ module GoodPipeline
         pipeline_record = PipelineRecord.create!(
           type: @pipeline.class.name,
           params: @pipeline.params,
-          status: "pending",
+          status: :pending,
           on_failure_strategy: @pipeline.failure_strategy.to_s
         )
 
