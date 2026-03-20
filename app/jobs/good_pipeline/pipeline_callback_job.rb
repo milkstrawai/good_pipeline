@@ -25,7 +25,7 @@ module GoodPipeline
         # Skipped pipelines only trigger on_complete (already called above)
       end
 
-      raise errors.first if errors.any?
+      raise_callback_errors(errors) if errors.any?
     end
 
     private
@@ -36,6 +36,17 @@ module GoodPipeline
       pipeline.send(callback)
     rescue StandardError => e
       errors << e
+    end
+
+    def raise_callback_errors(errors)
+      return if errors.empty?
+
+      primary = errors.first
+      if errors.size > 1
+        suppressed = errors[1..].map { |error| "#{error.class}: #{error.message}" }.join("; ")
+        raise primary.class, "#{primary.message} (suppressed #{errors.size - 1} additional error(s): #{suppressed})"
+      end
+      raise primary
     end
   end
 end

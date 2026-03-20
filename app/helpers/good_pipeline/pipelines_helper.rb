@@ -105,16 +105,15 @@ module GoodPipeline
     end
 
     def good_job_mount_path
+      return nil unless defined?(GoodJob::Engine)
+
       route = Rails.application.routes.routes.detect do |r|
-        r.app.app == GoodJob::Engine
-      rescue StandardError
-        false
+        r.app.respond_to?(:app) && r.app.app == GoodJob::Engine
       end
+
       return nil unless route
 
       route.path.spec.to_s.delete_suffix("(.:format)")
-    rescue StandardError
-      nil
     end
   end
 end

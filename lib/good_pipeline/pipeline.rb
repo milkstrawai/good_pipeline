@@ -58,6 +58,7 @@ module GoodPipeline
         Chain.new(pipeline_record)
       end
 
+      # Internal: reconstructs a minimal Pipeline for callback dispatch.
       def for_callback(pipeline_record)
         instance = allocate
         instance.instance_variable_set(:@pipeline_record, pipeline_record)

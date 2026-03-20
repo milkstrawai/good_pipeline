@@ -16,12 +16,16 @@ require_relative "good_pipeline/engine" if defined?(Rails::Engine)
 module GoodPipeline
   def self.run(*pipeline_configs)
     pipeline_records = pipeline_configs.map do |config|
-      pipeline_class = config[0]
-      params = config.fetch(1, {}).fetch(:with, {})
-      instance = pipeline_class.build(**params)
+      pipeline_class, pipeline_params = extract_pipeline_config(config)
+      instance = pipeline_class.build(**pipeline_params)
       Runner.call(instance)
     end
 
     Chain.new(pipeline_records)
+  end
+
+  # Internal: parses [PipelineClass, { with: { ... } }] config format.
+  def self.extract_pipeline_config(config)
+    [config[0], config.fetch(1, {}).fetch(:with, {})]
   end
 end
