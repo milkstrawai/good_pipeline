@@ -1,0 +1,30 @@
+<% if pipeline.upstream_pipelines.any? || pipeline.downstream_pipelines.any? %>
+  <div class="chain-cards">
+    <% if pipeline.upstream_pipelines.any? %>
+      <article>
+        <header><h4>Upstream</h4></header>
+        <div class="chain-chips">
+          <% pipeline.upstream_pipelines.each do |upstream| %>
+            <%= link_to pipeline_path(upstream), class: "chain-chip" do %>
+              <span class="chain-label"><%= humanized_type(upstream.type) %></span>
+              <%= status_badge(upstream.status) %>
+            <% end %>
+          <% end %>
+        </div>
+      </article>
+    <% end %>
+    <% if pipeline.downstream_pipelines.any? %>
+      <article>
+        <header><h4>Downstream</h4></header>
+        <div class="chain-chips">
+          <% pipeline.downstream_pipelines.each do |downstream| %>
+            <%= link_to pipeline_path(downstream), class: "chain-chip" do %>
+              <span class="chain-label"><%= humanized_type(downstream.type) %></span>
+              <%= status_badge(downstream.status) %>
+            <% end %>
+          <% end %>
+        </div>
+      </article>
+    <% end %>
+  </div>
+<% end %>

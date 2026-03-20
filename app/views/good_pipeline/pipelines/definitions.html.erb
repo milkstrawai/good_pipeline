@@ -1,0 +1,49 @@
+<h1 class="page-title">Pipeline Definitions</h1>
+
+<% if @pipelines.any? %>
+  <div class="definitions-layout">
+    <div class="definitions-sidebar">
+      <% @pipelines.each_with_index do |pipeline, index| %>
+        <button type="button" class="definition-item <%= 'active' if index.zero? %>" data-pipeline="<%= pipeline.type %>">
+          <span class="definition-item-name"><%= humanized_type(pipeline.type) %></span>
+          <span class="definition-item-meta"><%= pipeline.steps.size %> steps</span>
+        </button>
+      <% end %>
+    </div>
+
+    <div class="definitions-detail">
+      <% @pipelines.each_with_index do |pipeline, index| %>
+        <div class="definition-panel <%= 'active' if index.zero? %>" data-pipeline="<%= pipeline.type %>">
+          <article>
+            <header class="definition-header">
+              <div>
+                <h2><%= humanized_type(pipeline.type) %></h2>
+                <span class="definition-subtitle">on failure: <%= pipeline.on_failure_strategy %></span>
+              </div>
+              <%= link_to "View Executions \u2192", pipelines_path(pipeline_type: pipeline.type), class: "definition-executions-link" %>
+            </header>
+            <% if pipeline.steps.any? %>
+              <pre class="mermaid"><%= raw mermaid_definition_diagram(pipeline) %></pre>
+            <% else %>
+              <p class="empty-state">No steps defined.</p>
+            <% end %>
+          </article>
+        </div>
+      <% end %>
+    </div>
+  </div>
+
+  <script>
+    document.querySelectorAll('.definition-item').forEach(function(button) {
+      button.addEventListener('click', function() {
+        var type = this.dataset.pipeline;
+        document.querySelectorAll('.definition-item').forEach(function(b) { b.classList.remove('active'); });
+        document.querySelectorAll('.definition-panel').forEach(function(p) { p.classList.remove('active'); });
+        this.classList.add('active');
+        document.querySelector('.definition-panel[data-pipeline="' + type + '"]').classList.add('active');
+      });
+    });
+  </script>
+<% else %>
+  <p class="empty-state">No pipeline executions found yet. Run a pipeline to see its definition here.</p>
+<% end %>

@@ -1,0 +1,40 @@
+<p><%= link_to "\u2190 All Pipelines", pipelines_path %></p>
+
+<div class="pipeline-detail-grid">
+  <div class="pipeline-detail-left">
+    <article class="pipeline-details">
+      <header><h2><%= humanized_type(@pipeline.type) %></h2></header>
+      <dl>
+        <dt>Status</dt>
+        <dd><%= status_badge(@pipeline.status) %></dd>
+        <dt>Failure Strategy</dt>
+        <dd><span class="strategy-label"><%= @pipeline.on_failure_strategy %></span></dd>
+        <dt>Params</dt>
+        <dd><code><%= @pipeline.params&.to_json %></code></dd>
+        <dt>Created</dt>
+        <dd><%= relative_time_tag(@pipeline.created_at) %></dd>
+        <% if pipeline_duration(@pipeline) %>
+          <dt>Duration</dt>
+          <dd><%= pipeline_duration(@pipeline) %></dd>
+        <% end %>
+      </dl>
+    </article>
+
+    <%= render "chain_links", pipeline: @pipeline %>
+
+    <article class="table-card">
+      <%= render "steps_table", pipeline: @pipeline %>
+    </article>
+  </div>
+
+  <div class="pipeline-detail-right">
+    <article>
+      <header><h3>Pipeline Graph</h3></header>
+      <% if @pipeline.steps.any? %>
+        <pre class="mermaid"><%= raw mermaid_diagram(@pipeline) %></pre>
+      <% else %>
+        <p class="empty-state">No steps defined.</p>
+      <% end %>
+    </article>
+  </div>
+</div>

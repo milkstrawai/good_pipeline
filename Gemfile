@@ -15,4 +15,5 @@ gem "rubocop-minitest", "~> 0.39.1"
 gem "rubocop-performance", "~> 1.26", ">= 1.26.1"
 
 gem "pg", "~> 1.6", ">= 1.6.3"
+gem "puma", "~> 7.2"
 gem "rails", ">= 7.1"

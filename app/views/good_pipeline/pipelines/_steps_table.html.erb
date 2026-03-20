@@ -1,0 +1,33 @@
+<header><h3>Steps</h3></header>
+<table>
+  <thead>
+    <tr>
+      <th>Key</th>
+      <th>Job Class</th>
+      <th>Status</th>
+      <th>Duration</th>
+      <th>Error</th>
+    </tr>
+  </thead>
+  <tbody>
+    <% pipeline.steps.each do |step| %>
+      <tr>
+        <td>
+          <% if (url = good_job_step_url(step)) %>
+            <%= link_to step.key, url, target: "_blank", rel: "noopener" %>
+          <% else %>
+            <%= step.key %>
+          <% end %>
+        </td>
+        <td><%= step.job_class %></td>
+        <td><%= status_badge(step.coordination_status) %></td>
+        <td><%= step.duration ? "#{step.duration.round(2)}s" : "\u2014" %></td>
+        <td>
+          <% if step.error_class %>
+            <small><%= step.error_class %>: <%= step.error_message %></small>
+          <% end %>
+        </td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>

@@ -6,6 +6,10 @@ default: &default
   password: postgres
   pool: 20
 
+development:
+  <<: *default
+  database: good_pipeline_development
+
 test:
   <<: *default
   database: good_pipeline_test

@@ -1,0 +1,43 @@
+<h1 class="page-title">Pipeline Executions</h1>
+
+<div class="filters-row">
+  <ul class="status-tabs">
+  <li><%= link_to "All (#{@total_count})", pipelines_path(pipeline_type: @pipeline_type), class: ("active" if @status.nil?) %></li>
+  <% %w[running succeeded failed halted skipped].each do |status| %>
+    <li><%= link_to "#{status.titleize} (#{@status_counts[status] || 0})", pipelines_path(status: status, pipeline_type: @pipeline_type), class: ("active" if @status == status), data: { status: status } %></li>
+  <% end %>
+  </ul>
+  <select class="pipeline-type-select" onchange="window.location = this.value;">
+    <option value="<%= pipelines_path(status: @status) %>" <%= "selected" if @pipeline_type.nil? %>>All Pipelines</option>
+    <% @pipeline_types.each do |pipeline_type| %>
+      <option value="<%= pipelines_path(status: @status, pipeline_type: pipeline_type) %>" <%= "selected" if @pipeline_type == pipeline_type %>>
+        <%= humanized_type(pipeline_type) %>
+      </option>
+    <% end %>
+  </select>
+</div>
+
+<% if @pipelines.any? %>
+  <div class="table-card">
+    <table>
+      <thead>
+        <tr>
+          <th>Execution ID</th>
+          <th>Pipeline Name</th>
+          <th>Status</th>
+          <th>Start Time</th>
+          <th>Duration</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @pipelines.each do |pipeline| %>
+          <%= render "pipeline_row", pipeline: pipeline %>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+
+  <%= render "pagination" %>
+<% else %>
+  <p class="empty-state">No pipelines found.</p>
+<% end %>

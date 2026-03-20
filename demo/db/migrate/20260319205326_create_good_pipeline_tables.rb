@@ -17,6 +17,8 @@ class CreateGoodPipelineTables < ActiveRecord::Migration[8.1]
       t.timestamps
     end
 
+    add_index :good_pipeline_pipelines, :status
+
     create_table :good_pipeline_steps, id: :uuid do |t|
       t.references :pipeline, null: false, foreign_key: { to_table: :good_pipeline_pipelines }, type: :uuid
       t.string :key, null: false

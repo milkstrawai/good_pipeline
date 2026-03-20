@@ -1,0 +1,518 @@
+/* GoodPipeline Dashboard Styles */
+
+/* Page background */
+html {
+  background-color: #f5f6fa;
+}
+
+body {
+  background-color: #f5f6fa;
+  min-height: 100vh;
+}
+
+/* Full-width layout */
+.dashboard-content {
+  padding: 0 2rem;
+}
+
+/* Header bar */
+.dashboard-header {
+  background: #1a1a2e;
+  padding: 0.55rem 2rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.header-version {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.78rem;
+}
+
+.header-github {
+  color: rgba(255, 255, 255, 0.5);
+  display: flex;
+  transition: color 0.15s ease;
+}
+
+.header-github:hover {
+  color: #fff;
+}
+
+.dashboard-header a {
+  color: #fff;
+  text-decoration: none;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.dashboard-header a:hover {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.header-nav-link {
+  font-weight: 400;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.header-nav-link:hover {
+  color: #fff;
+}
+
+/* Page title */
+.page-title {
+  margin-bottom: 0.5rem;
+  font-size: 1.5rem;
+}
+
+/* Filters row — tabs + dropdown */
+.filters-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.filters-row .status-tabs {
+  margin-bottom: 0;
+  flex: 1;
+}
+
+/* Pipeline type dropdown */
+.filters-row .pipeline-type-select {
+  width: auto !important;
+  min-width: 200px;
+  max-width: 250px;
+  margin: 0;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.82rem;
+  flex-shrink: 0;
+}
+
+/* Status badges — pastel outlined style */
+.badge {
+  display: inline-block;
+  padding: 0.15em 0.55em;
+  border-radius: 20px;
+  font-size: 0.78em;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badge-pending { background-color: #f5f5f5; color: #757575; border: 1px solid #e0e0e0; }
+.badge-running { background-color: #e3f2fd; color: #1565c0; border: 1px solid #bbdefb; }
+.badge-enqueued { background-color: #e3f2fd; color: #1565c0; border: 1px solid #bbdefb; }
+.badge-succeeded { background-color: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
+.badge-failed { background-color: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
+.badge-halted { background-color: #fff3e0; color: #e65100; border: 1px solid #ffe0b2; }
+.badge-skipped { background-color: #f5f5f5; color: #757575; border: 1px solid #e0e0e0; }
+
+/* Strategy label */
+.strategy-label {
+  display: inline-block;
+  padding: 0.15em 0.5em;
+  border-radius: 4px;
+  font-size: 0.85em;
+  background-color: #e9ecef;
+  color: #495057;
+}
+
+/* Status tabs */
+.status-tabs {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+  padding: 0;
+  list-style-type: none;
+}
+
+.status-tabs li {
+  margin: 0;
+  list-style-type: none;
+}
+
+.status-tabs a {
+  display: inline-block;
+  padding: 0.25em 0.6em;
+  border-radius: 20px;
+  text-decoration: none;
+  font-size: 0.78em;
+  font-weight: 600;
+  border: 1px solid #e0e0e0;
+  color: var(--pico-color);
+  background: #fff;
+  transition: all 0.15s ease;
+}
+
+.status-tabs a:hover {
+  background-color: #f5f5f5;
+}
+
+.status-tabs a.active {
+  background-color: #1a1a2e;
+  color: #fff;
+  border-color: #1a1a2e;
+}
+
+/* Colored tab text per status */
+.status-tabs a[data-status="running"] { color: #2e7d32; }
+.status-tabs a[data-status="succeeded"] { color: #2e7d32; }
+.status-tabs a[data-status="failed"] { color: #c62828; }
+.status-tabs a[data-status="halted"] { color: #e65100; }
+.status-tabs a[data-status="skipped"] { color: #757575; }
+
+/* Active colored tabs */
+.status-tabs a[data-status="running"].active { background-color: #2e7d32; border-color: #2e7d32; color: #fff; }
+.status-tabs a[data-status="succeeded"].active { background-color: #2e7d32; border-color: #2e7d32; color: #fff; }
+.status-tabs a[data-status="failed"].active { background-color: #c62828; border-color: #c62828; color: #fff; }
+.status-tabs a[data-status="halted"].active { background-color: #e65100; border-color: #e65100; color: #fff; }
+.status-tabs a[data-status="skipped"].active { background-color: #757575; border-color: #757575; color: #fff; }
+
+/* Table card */
+.table-card {
+  background: #fff;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  border: 1px solid #eeeef2;
+  margin-bottom: 1.5rem;
+}
+
+.table-card table {
+  margin: 0;
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.table-card table :is(th, td) {
+  padding: 0.45rem 0.9rem;
+  font-size: 0.85rem;
+  border: none;
+  border-bottom: 1px solid #f2f2f6;
+  text-align: left;
+}
+
+.table-card table thead th {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #9e9e9e;
+  font-weight: 700;
+  border-bottom: 1px solid #eeeef2;
+  background: #fafbfc;
+  padding: 0.55rem 0.9rem;
+}
+
+.table-card table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Alternating row stripes */
+.table-card table tbody tr:nth-child(even) {
+  background-color: #fafbfd;
+}
+
+/* Clickable pipeline rows */
+.table-card tr[data-href] {
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+}
+
+.table-card tr[data-href]:hover {
+  background-color: #f0f1f8;
+}
+
+/* Running row highlight */
+.table-card tr.row-running,
+.table-card tr.row-running:nth-child(even) {
+  background-color: #e3eeff;
+}
+
+.table-card tr.row-running:hover {
+  background-color: #d6e5ff;
+}
+
+/* Execution ID */
+.execution-id {
+  font-family: var(--pico-font-family-monospace, monospace);
+  font-size: 0.82em;
+  color: #616161;
+}
+
+/* Pipeline name in table */
+.pipeline-name {
+  font-weight: 700;
+  color: #1a1a2e;
+}
+
+/* Text muted */
+.text-muted {
+  color: var(--pico-muted-color);
+}
+
+/* Pipeline detail grid */
+.pipeline-detail-grid {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (max-width: 768px) {
+  .pipeline-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Detail page cards */
+.pipeline-detail-grid article {
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  border: 1px solid #eeeef2;
+}
+
+.pipeline-detail-grid article > header :is(h2, h3, h4) {
+  margin-bottom: 0;
+}
+
+/* Detail page definition list */
+.pipeline-details dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.4rem 1rem;
+  margin: 0;
+}
+
+.pipeline-details dt {
+  font-weight: 600;
+  color: var(--pico-muted-color);
+  font-size: 0.85rem;
+}
+
+.pipeline-details dd {
+  margin: 0;
+}
+
+/* Steps table on show page */
+article.table-card {
+  padding: 0;
+}
+
+article.table-card > header {
+  padding: 0.75rem 0.9rem;
+  margin: 0;
+}
+
+.pipeline-detail-left .table-card table :is(th, td) {
+  padding: 0.4rem 0.7rem;
+  font-size: 0.82rem;
+}
+
+/* Mermaid diagram container */
+.mermaid {
+  display: flex;
+  justify-content: center;
+  background: transparent;
+  margin-bottom: 0;
+}
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--pico-muted-color);
+}
+
+/* Chain cards */
+.chain-cards {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 0;
+}
+
+.chain-cards > article {
+  flex: 1;
+}
+
+.chain-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.chain-empty {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.chain-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.7rem;
+  background: #fff;
+  border: 1px solid #eeeef2;
+  border-radius: 8px;
+  text-decoration: none;
+  font-size: 0.82rem;
+  color: #1a1a2e;
+  transition: border-color 0.15s ease;
+}
+
+.chain-chip:hover {
+  border-color: var(--pico-primary);
+}
+
+.chain-arrow {
+  color: #9e9e9e;
+  font-size: 0.9em;
+}
+
+.chain-label {
+  font-weight: 600;
+}
+
+/* Definitions layout — sidebar + detail */
+.definitions-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 768px) {
+  .definitions-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Sidebar list */
+.definitions-sidebar {
+  background: #fff;
+  border-radius: 10px;
+  border: 1px solid #eeeef2;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+}
+
+.definition-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.45rem 0.75rem;
+  border: none;
+  border-bottom: 1px solid #f2f2f6;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.1s ease;
+  font-family: inherit;
+  font-size: 0.82rem;
+  color: #1a1a2e;
+  outline: none;
+  margin: 0;
+  border-radius: 0;
+}
+
+.definition-item:last-child {
+  border-bottom: none;
+}
+
+.definition-item:hover {
+  background-color: #f8f9ff;
+}
+
+.definition-item.active {
+  background-color: #e8f0fe;
+  border-left: 3px solid #4a90d9;
+}
+
+.definition-item:focus,
+.definition-item:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.definition-item-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.definition-item-meta {
+  font-size: 0.7rem;
+  color: #9e9e9e;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Detail panel */
+.definitions-detail {
+  min-height: 400px;
+  position: relative;
+}
+
+.definition-panel {
+  position: absolute;
+  visibility: hidden;
+  width: 100%;
+}
+
+.definition-panel.active {
+  position: static;
+  visibility: visible;
+}
+
+.definition-panel article {
+  background: #fff;
+  border-radius: 10px;
+  border: 1px solid #eeeef2;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.definition-panel article > header :is(h2) {
+  margin-bottom: 0;
+}
+
+.definition-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.definition-subtitle {
+  font-size: 0.8rem;
+  color: #9e9e9e;
+}
+
+.definition-executions-link {
+  font-size: 0.82rem;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+/* Params preview */
+.params-preview code {
+  font-size: 0.8em;
+  padding: 0.1em 0.35em;
+}

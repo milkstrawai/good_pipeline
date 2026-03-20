@@ -1,0 +1,7 @@
+<tr data-href="<%= pipeline_path(pipeline) %>" class="<%= 'row-running' if pipeline.running? %>">
+  <td><span class="execution-id"><%= pipeline.id.to_s.first(8) %></span></td>
+  <td><span class="pipeline-name"><%= humanized_type(pipeline.type) %></span></td>
+  <td><%= status_badge(pipeline.status) %></td>
+  <td><%= pipeline.created_at.strftime("%Y-%m-%d %I:%M %p") %></td>
+  <td><%= pipeline_duration(pipeline) || "\u2014" %></td>
+</tr>
