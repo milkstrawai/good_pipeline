@@ -13,14 +13,14 @@ Gem::Specification.new do |spec|
                      "where each step is a GoodJob job. Handles dependency " \
                      "resolution, parallel execution, failure strategies, " \
                      "and lifecycle callbacks."
-  spec.homepage = "https://github.com/AliOsm/good_pipeline"
+  spec.homepage = "https://github.com/milkstrawai/good_pipeline"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.2.0"
 
   spec.metadata["allowed_push_host"] = "https://rubygems.org"
   spec.metadata["homepage_uri"] = spec.homepage
-  spec.metadata["source_code_uri"] = "https://github.com/AliOsm/good_pipeline"
-  spec.metadata["changelog_uri"] = "https://github.com/AliOsm/good_pipeline/blob/main/CHANGELOG.md"
+  spec.metadata["source_code_uri"] = "https://github.com/milkstrawai/good_pipeline"
+  spec.metadata["changelog_uri"] = "https://github.com/milkstrawai/good_pipeline/blob/main/CHANGELOG.md"
   spec.metadata["rubygems_mfa_required"] = "true"
 
   # Specify which files should be added to the gem when it is released.
