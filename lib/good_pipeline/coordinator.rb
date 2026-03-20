@@ -9,12 +9,10 @@ module GoodPipeline
       StepRecord.transaction do
         if succeeded
           step.transition_coordination_status_to!(:succeeded)
-          step.update_column(:finished_at, Time.current)
         else
           metadata = FailureMetadata.extract(step)
           step.transition_coordination_status_to!(:failed)
           step.update_columns(
-            finished_at: Time.current,
             error_class: metadata.error_class,
             error_message: metadata.error_message,
             attempts: metadata.attempts

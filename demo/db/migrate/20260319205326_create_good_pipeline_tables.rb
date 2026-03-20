@@ -31,8 +31,6 @@ class CreateGoodPipelineTables < ActiveRecord::Migration[8.1]
       t.integer :attempts
       t.string :error_class
       t.text :error_message
-      t.datetime :started_at
-      t.datetime :finished_at
 
       t.timestamps
     end

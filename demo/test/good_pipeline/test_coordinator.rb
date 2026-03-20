@@ -23,7 +23,7 @@ class TestCoordinator < ActiveSupport::TestCase
   def test_complete_step_idempotent_on_terminal_step
     pipeline = create_pipeline(on_failure_strategy: "halt")
     step = build_step(pipeline, key: "a")
-    step.update_columns(coordination_status: "succeeded", finished_at: Time.current)
+    step.update_columns(coordination_status: "succeeded")
     step.reload
 
     GoodPipeline::Coordinator.complete_step(step, succeeded: true)
@@ -33,7 +33,7 @@ class TestCoordinator < ActiveSupport::TestCase
 
   # --- complete_step: succeeded ---
 
-  def test_complete_step_succeeded_transitions_and_sets_finished_at
+  def test_complete_step_succeeded_transitions
     pipeline = create_pipeline(on_failure_strategy: "halt")
     pipeline.update_columns(status: "running")
     step = build_step(pipeline, key: "a")
@@ -42,10 +42,7 @@ class TestCoordinator < ActiveSupport::TestCase
 
     GoodPipeline::Coordinator.complete_step(step, succeeded: true)
 
-    step.reload
-
-    assert_equal "succeeded", step.coordination_status
-    refute_nil step.finished_at
+    assert_equal "succeeded", step.reload.coordination_status
   end
 
   # --- complete_step: failed ---
@@ -63,7 +60,6 @@ class TestCoordinator < ActiveSupport::TestCase
     step.reload
 
     assert_equal "failed", step.coordination_status
-    refute_nil step.finished_at
     assert_equal "RuntimeError", step.error_class
     assert_equal "something broke", step.error_message
     assert_equal 3, step.attempts

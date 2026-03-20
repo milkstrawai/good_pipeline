@@ -46,6 +46,15 @@ module GoodPipeline
              through: :downstream_dependencies,
              source: :step
 
+    def duration
+      return nil unless good_job_id
+
+      good_job = GoodJob::Job.find_by(id: good_job_id)
+      return nil unless good_job&.performed_at && good_job.finished_at
+
+      good_job.finished_at - good_job.performed_at
+    end
+
     def terminal_coordination_status?
       TERMINAL_COORDINATION_STATUSES.include?(coordination_status)
     end

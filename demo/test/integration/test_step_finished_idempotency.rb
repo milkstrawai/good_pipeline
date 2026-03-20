@@ -7,7 +7,7 @@ class TestStepFinishedIdempotency < ActiveSupport::TestCase
     pipeline = create_pipeline
     pipeline.update_columns(status: "running")
     step = build_step(pipeline, key: "a")
-    step.update_columns(coordination_status: "succeeded", finished_at: Time.current)
+    step.update_columns(coordination_status: "succeeded")
 
     GoodPipeline::Coordinator.complete_step(step.reload, succeeded: true)
 
@@ -18,7 +18,7 @@ class TestStepFinishedIdempotency < ActiveSupport::TestCase
     pipeline = create_pipeline
     pipeline.update_columns(status: "running")
     step = build_step(pipeline, key: "a")
-    step.update_columns(coordination_status: "failed", finished_at: Time.current)
+    step.update_columns(coordination_status: "failed")
 
     GoodPipeline::Coordinator.complete_step(step.reload, succeeded: false)
 

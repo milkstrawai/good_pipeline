@@ -60,7 +60,6 @@ class TestRetryScenarios < ActiveSupport::TestCase
     step.reload
 
     assert_equal "failed", step.coordination_status
-    assert_not_nil step.finished_at
     assert_not_nil step.error_class
     assert_not_nil step.error_message
   end
