@@ -12,6 +12,11 @@
 /demo/log/
 /demo/db/schema.rb
 
+### VitePress docs ###
+docs/node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+
 # Created by https://www.toptal.com/developers/gitignore/api/ruby,linux,windows,macos,dotenv
 # Edit at https://www.toptal.com/developers/gitignore?templates=ruby,linux,windows,macos,dotenv
 
