@@ -23,7 +23,6 @@ class CreateGoodPipelineTables < ActiveRecord::Migration[8.1]
       t.string :job_class, null: false
       t.jsonb :params, null: false, default: {}
       t.string :coordination_status, null: false, default: "pending"
-      t.string :observed_status
       t.string :on_failure_strategy
       t.string :queue
       t.integer :priority

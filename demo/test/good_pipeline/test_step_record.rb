@@ -12,13 +12,6 @@ class TestStepRecord < ActiveSupport::TestCase
     assert_equal "pending", step.coordination_status
   end
 
-  def test_default_observed_status_is_nil
-    pipeline = create_pipeline
-    step = create_step(pipeline)
-
-    assert_nil step.observed_status
-  end
-
   # --- UUID primary key ---
 
   def test_id_is_uuid
