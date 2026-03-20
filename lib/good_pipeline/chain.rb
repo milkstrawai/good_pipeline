@@ -45,9 +45,9 @@ module GoodPipeline
 
     def normalize_arguments(arguments)
       if arguments.first.is_a?(Array)
-        arguments.map { |config| GoodPipeline.extract_pipeline_config( config) }
+        arguments.map { |config| GoodPipeline.extract_pipeline_config(config) }
       else
-        [GoodPipeline.extract_pipeline_config( arguments)]
+        [GoodPipeline.extract_pipeline_config(arguments)]
       end
     end
   end

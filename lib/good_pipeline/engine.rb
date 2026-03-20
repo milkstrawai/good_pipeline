@@ -12,5 +12,12 @@ module GoodPipeline
         raise GoodPipeline::ConfigurationError, "GoodPipeline requires GoodJob.preserve_job_records = true"
       end
     end
+
+    initializer "good_pipeline.cleanup_hook" do
+      ActiveSupport::Notifications.subscribe("cleanup_preserved_jobs.good_job") do |event|
+        timestamp = event.payload[:timestamp]
+        GoodPipeline.cleanup_preserved_pipelines(older_than: timestamp) if timestamp
+      end
+    end
   end
 end

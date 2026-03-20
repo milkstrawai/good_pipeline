@@ -28,4 +28,18 @@ module GoodPipeline
   def self.extract_pipeline_config(config)
     [config[0], config.fetch(1, {}).fetch(:with, {})]
   end
+
+  def self.cleanup_preserved_pipelines(older_than:)
+    pipeline_ids = PipelineRecord.where(status: PipelineRecord::TERMINAL_STATUSES)
+                                 .where("updated_at < ?", older_than)
+                                 .pluck(:id)
+    return if pipeline_ids.empty?
+
+    DependencyRecord.where(pipeline_id: pipeline_ids).delete_all
+    StepRecord.where(pipeline_id: pipeline_ids).delete_all
+    ChainRecord.where(upstream_pipeline_id: pipeline_ids)
+               .or(ChainRecord.where(downstream_pipeline_id: pipeline_ids))
+               .delete_all
+    PipelineRecord.where(id: pipeline_ids).delete_all
+  end
 end
