@@ -77,8 +77,7 @@ GoodPipeline uses four Postgres tables:
 | `params` | jsonb | Arguments passed to `with:` |
 | `coordination_status` | string | `pending`, `enqueued`, `succeeded`, `failed`, `skipped` |
 | `on_failure_strategy` | string | Step-level override (nullable) |
-| `queue` | string | Optional queue override |
-| `priority` | integer | Optional priority override |
+| `enqueue_options` | jsonb | Options passed to `job.enqueue()` (queue, priority, wait, etc.) |
 | `good_job_batch_id` | uuid | Step's own GoodJob::Batch |
 | `good_job_id` | uuid | GoodJob record ID (nil until enqueued) |
 | `attempts` | integer | Execution attempt count |

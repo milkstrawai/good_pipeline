@@ -29,8 +29,7 @@ module GoodPipeline
             job_class: step_definition.job_class.name,
             params: step_definition.params,
             on_failure_strategy: step_definition.failure_strategy&.to_s,
-            queue: step_definition.queue,
-            priority: step_definition.priority
+            enqueue_options: step_definition.enqueue_options
           )
 
           step_definition.dependencies.each do |dependency_key|

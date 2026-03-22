@@ -105,7 +105,7 @@ module GoodPipeline
       raise NotImplementedError, "#{self.class} must implement #configure"
     end
 
-    def run(key, job_class, with: {}, after: [], failure_strategy: nil, queue: nil, priority: nil)
+    def run(key, job_class, with: {}, after: [], failure_strategy: nil, enqueue: {})
       raise ConfigurationError, "run can only be called inside configure" unless @building
 
       @step_definitions << StepDefinition.new(
@@ -114,8 +114,7 @@ module GoodPipeline
         params: with,
         dependencies: after,
         failure_strategy: failure_strategy,
-        queue: queue,
-        priority: priority
+        enqueue_options: enqueue
       )
     end
   end

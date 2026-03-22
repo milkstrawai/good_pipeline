@@ -85,16 +85,9 @@ module GoodPipeline
     end
 
     def self.enqueue_step_job(step)
-      job = build_job_instance(step)
-      enqueued_job = job.enqueue
-      step.update_column(:good_job_id, enqueued_job.provider_job_id || enqueued_job.job_id)
-    end
-
-    def self.build_job_instance(step)
       job = step.job_class.constantize.new(**step.params.symbolize_keys)
-      job.queue_name = step.queue if step.queue.present?
-      job.priority = step.priority if step.priority.present?
-      job
+      enqueued_job = job.enqueue(**step.enqueue_options.symbolize_keys)
+      step.update_column(:good_job_id, enqueued_job.provider_job_id || enqueued_job.job_id)
     end
 
     def self.recompute_pipeline_status(pipeline)
@@ -171,6 +164,6 @@ module GoodPipeline
                          :all_upstreams_satisfied?, :should_skip?, :permanently_unsatisfied?,
                          :skip_all_pending_steps, :effective_strategy,
                          :enqueue_user_job, :build_step_batch, :enqueue_step_job,
-                         :build_job_instance, :derive_terminal_status, :resolve_step
+                         :derive_terminal_status, :resolve_step
   end
 end

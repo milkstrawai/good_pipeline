@@ -12,8 +12,7 @@ class TestStepDefinition < Minitest::Test
       params: { video_id: 1 },
       dependencies: [:download],
       failure_strategy: :ignore,
-      queue: "media",
-      priority: 10
+      enqueue_options: { queue: "media", priority: 10 }
     )
 
     assert_equal :transcode, step.key
@@ -21,8 +20,7 @@ class TestStepDefinition < Minitest::Test
     assert_equal({ video_id: 1 }, step.params)
     assert_equal [:download], step.dependencies
     assert_equal :ignore, step.failure_strategy
-    assert_equal "media", step.queue
-    assert_equal 10, step.priority
+    assert_equal({ queue: "media", priority: 10 }, step.enqueue_options)
   end
 
   def test_defaults_params_to_empty_hash
@@ -49,16 +47,10 @@ class TestStepDefinition < Minitest::Test
     assert_nil step.failure_strategy
   end
 
-  def test_defaults_queue_to_nil
+  def test_defaults_enqueue_options_to_empty_hash
     step = GoodPipeline::StepDefinition.new(key: :a, job_class: DummyJob)
 
-    assert_nil step.queue
-  end
-
-  def test_defaults_priority_to_nil
-    step = GoodPipeline::StepDefinition.new(key: :a, job_class: DummyJob)
-
-    assert_nil step.priority
+    assert_equal({}, step.enqueue_options)
   end
 
   def test_is_frozen_after_initialization
@@ -77,5 +69,38 @@ class TestStepDefinition < Minitest::Test
     step = GoodPipeline::StepDefinition.new(key: :a, job_class: DummyJob, dependencies: [:b])
 
     assert_predicate step.dependencies, :frozen?
+  end
+
+  def test_enqueue_options_is_frozen
+    step = GoodPipeline::StepDefinition.new(key: :a, job_class: DummyJob, enqueue_options: { queue: "high" })
+
+    assert_predicate step.enqueue_options, :frozen?
+  end
+
+  def test_accepts_all_supported_enqueue_options
+    step = GoodPipeline::StepDefinition.new(
+      key: :a,
+      job_class: DummyJob,
+      enqueue_options: { queue: "high", priority: 10, wait: 300, good_job_labels: ["urgent"], good_job_notify: false }
+    )
+
+    assert_equal({ queue: "high", priority: 10, wait: 300, good_job_labels: ["urgent"], good_job_notify: false },
+                 step.enqueue_options)
+  end
+
+  def test_rejects_wait_until
+    error = assert_raises(GoodPipeline::ConfigurationError) do
+      GoodPipeline::StepDefinition.new(key: :a, job_class: DummyJob, enqueue_options: { wait_until: Time.now })
+    end
+
+    assert_includes error.message, "unsupported enqueue options: wait_until"
+  end
+
+  def test_rejects_unknown_enqueue_options
+    error = assert_raises(GoodPipeline::ConfigurationError) do
+      GoodPipeline::StepDefinition.new(key: :a, job_class: DummyJob, enqueue_options: { queu: "high" })
+    end
+
+    assert_includes error.message, "unsupported enqueue options: queu"
   end
 end

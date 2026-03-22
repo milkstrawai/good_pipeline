@@ -87,11 +87,10 @@ VideoProcessingPipeline.run(video_id: 123)
 
 ```ruby
 run :step_key, JobClass,
-  with:       { key: "value" },  # keyword args passed to the job
-  after:      :other_step,       # dependency (symbol or array of symbols)
-  on_failure: :ignore,           # step-level failure strategy override
-  queue:      :media,            # optional queue override
-  priority:   10                 # optional priority override
+  with:       { key: "value" },                # keyword args passed to the job
+  after:      :other_step,                     # dependency (symbol or array of symbols)
+  on_failure: :ignore,                         # step-level failure strategy override
+  enqueue:    { queue: :media, priority: 10 }  # options passed to job.enqueue()
 ```
 
 ### Failure strategies

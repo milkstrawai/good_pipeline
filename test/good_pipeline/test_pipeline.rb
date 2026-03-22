@@ -216,8 +216,7 @@ class TestPipeline < Minitest::Test
             with: { url: "https://example.com" },
             after: :transcode,
             failure_strategy: :retry,
-            queue: "high",
-            priority: 10
+            enqueue: { queue: "high", priority: 10, wait: 300 }
       end
     end
 
@@ -227,8 +226,7 @@ class TestPipeline < Minitest::Test
     assert_equal({ url: "https://example.com" }, step.params)
     assert_equal [:transcode], step.dependencies
     assert_equal :retry, step.failure_strategy
-    assert_equal "high", step.queue
-    assert_equal 10, step.priority
+    assert_equal({ queue: "high", priority: 10, wait: 300 }, step.enqueue_options)
   end
 
   def test_run_defaults_with_to_empty_hash

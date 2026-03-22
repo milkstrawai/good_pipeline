@@ -7,13 +7,13 @@ GoodPipeline records are standard ActiveRecord models. You can query and inspect
 ```ruby
 pipeline = VideoProcessingPipeline.run(video_id: 123)
 
-pipeline.id                  # => "uuid-string"
-pipeline.status              # => "running"
-pipeline.type                # => "VideoProcessingPipeline"
-pipeline.params              # => { "video_id" => 123 }
-pipeline.halt_triggered?     # => false
-pipeline.terminal?           # => false
-pipeline.on_failure_strategy # => "halt"
+pipeline.id                   # => "uuid-string"
+pipeline.status               # => "running"
+pipeline.type                 # => "VideoProcessingPipeline"
+pipeline.params               # => { "video_id" => 123 }
+pipeline.halt_triggered?      # => false
+pipeline.terminal?            # => false
+pipeline.on_failure_strategy  # => "halt"
 pipeline.created_at
 pipeline.updated_at
 ```
@@ -23,17 +23,16 @@ pipeline.updated_at
 ```ruby
 step = pipeline.steps.find_by(key: "transcode")
 
-step.key                     # => "transcode"
-step.job_class               # => "TranscodeJob"
-step.coordination_status     # => "succeeded"
-step.params                  # => { "video_id" => 123 }
-step.queue                   # => nil (or custom queue name)
-step.priority                # => nil (or custom priority)
-step.good_job_id             # => "uuid" of the GoodJob record
-step.attempts                # => 3
-step.error_class             # => "TransientError" (on failure)
-step.error_message           # => "Connection timed out" (on failure)
-step.duration                # => 12.34 (Float seconds, from GoodJob record)
+step.key                  # => "transcode"
+step.job_class            # => "TranscodeJob"
+step.coordination_status  # => "succeeded"
+step.params               # => { "video_id" => 123 }
+step.enqueue_options      # => { "queue" => "high", "priority" => 10 }
+step.good_job_id          # => "uuid" of the GoodJob record
+step.attempts             # => 3
+step.error_class          # => "TransientError" (on failure)
+step.error_message        # => "Connection timed out" (on failure)
+step.duration             # => 12.34 (Float seconds, from GoodJob record)
 ```
 
 ## Pipeline statuses

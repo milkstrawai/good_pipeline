@@ -9,6 +9,7 @@ AllCops:
     - "lib/generators/**/templates/**"
     - "demo/**/*"
     - "vendor/**/*"
+    - "docs/node_modules/**/*"
 
 Style/Documentation:
   Enabled: false

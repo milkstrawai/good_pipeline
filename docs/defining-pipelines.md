@@ -45,11 +45,10 @@ end
 
 ```ruby
 run :step_key, JobClass,
-  with:       { keyword: args },   # keyword args passed to job's perform method
-  after:      :other_step,         # single dependency (symbol or array of symbols)
-  on_failure: :ignore,             # step-level failure strategy override
-  queue:      :media,              # optional queue override
-  priority:   10                   # optional priority override
+  with:       { keyword: args },               # keyword args passed to job's perform method
+  after:      :other_step,                     # single dependency (symbol or array of symbols)
+  on_failure: :ignore,                         # step-level failure strategy override
+  enqueue:    { queue: :media, priority: 10 }  # options passed to job.enqueue()
 ```
 
 ### Parameters
@@ -61,8 +60,21 @@ run :step_key, JobClass,
 | `with:` | Hash | No | Keyword arguments forwarded to the job's `perform` method |
 | `after:` | Symbol or Array | No | Step key(s) this step depends on |
 | `on_failure:` | Symbol | No | Override: `:halt`, `:continue`, or `:ignore` |
-| `queue:` | String | No | Queue name for this step's job |
-| `priority:` | Integer | No | Priority for this step's job |
+| `enqueue:` | Hash | No | Options passed through to `job.enqueue()` (see below) |
+
+### Enqueue options
+
+The `enqueue:` hash supports any option that ActiveJob's `enqueue` method accepts, except `wait_until`:
+
+| Key | Type | Description |
+|---|---|---|
+| `queue` | String/Symbol | Queue name for this step's job |
+| `priority` | Integer | Priority for this step's job |
+| `wait` | Numeric | Delay in seconds after dependencies are satisfied |
+| `good_job_labels` | Array | GoodJob labels for the job |
+| `good_job_notify` | Boolean | Whether GoodJob emits a NOTIFY event |
+
+`wait_until` is not supported because absolute times don't survive JSONB serialization and are semantically wrong in a DAG context — the step may not be enqueued until minutes or hours after the pipeline is created.
 
 ## Step keys vs job classes
 
