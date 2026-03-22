@@ -516,3 +516,81 @@ article.table-card > header {
   font-size: 0.8em;
   padding: 0.1em 0.35em;
 }
+
+/* Interactive diagram container */
+.diagram-container {
+  position: relative;
+}
+
+.diagram-toolbar {
+  position: absolute;
+  bottom: 0.5rem;
+  right: 0.5rem;
+  z-index: 10;
+  display: flex;
+  gap: 0.25rem;
+  opacity: 0.4;
+  transition: opacity 0.15s ease;
+}
+
+.diagram-container:hover .diagram-toolbar {
+  opacity: 1;
+}
+
+.diagram-btn {
+  all: unset;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #555;
+  user-select: none;
+  transition: background-color 0.1s ease;
+}
+
+.diagram-btn[data-action="zoom-reset"] {
+  width: auto;
+  padding: 0 0.4rem;
+  font-size: 0.62rem;
+  font-weight: 500;
+}
+
+.diagram-btn:hover {
+  background-color: #f0f0f0;
+}
+
+.diagram-viewport {
+  overflow: hidden;
+  cursor: grab;
+  min-height: 200px;
+}
+
+.diagram-viewport:active {
+  cursor: grabbing;
+}
+
+.diagram-canvas {
+  transform-origin: 0 0;
+  transition: transform 0.15s ease;
+}
+
+.diagram-canvas.dragging {
+  transition: none;
+}
+
+.diagram-container:fullscreen {
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+}
+
+.diagram-container:fullscreen .diagram-viewport {
+  flex: 1;
+}

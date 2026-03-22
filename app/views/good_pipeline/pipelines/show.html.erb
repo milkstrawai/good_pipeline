@@ -31,7 +31,19 @@
     <article>
       <header><h3>Pipeline Graph</h3></header>
       <% if @pipeline.steps.any? %>
-        <pre class="mermaid"><%= raw mermaid_diagram(@pipeline) %></pre>
+        <div class="diagram-container">
+          <div class="diagram-toolbar">
+            <button type="button" class="diagram-btn" data-action="zoom-in" title="Zoom in">+</button>
+            <button type="button" class="diagram-btn" data-action="zoom-out" title="Zoom out">&minus;</button>
+            <button type="button" class="diagram-btn" data-action="zoom-reset" title="Reset zoom">Reset</button>
+            <button type="button" class="diagram-btn" data-action="fullscreen" title="Fullscreen">&#x26F6;</button>
+          </div>
+          <div class="diagram-viewport">
+            <div class="diagram-canvas">
+              <pre class="mermaid"><%= raw mermaid_diagram(@pipeline) %></pre>
+            </div>
+          </div>
+        </div>
       <% else %>
         <p class="empty-state">No steps defined.</p>
       <% end %>

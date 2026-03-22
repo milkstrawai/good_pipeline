@@ -36,5 +36,120 @@
       });
     });
   </script>
+  <script>
+    (function() {
+      var MIN_SCALE = 0.5, MAX_SCALE = 4, ZOOM_STEP = 0.25;
+      var states = new WeakMap();
+
+      function getState(container) {
+        if (!states.has(container)) states.set(container, { scale: 1, panX: 0, panY: 0 });
+        return states.get(container);
+      }
+
+      function applyTransform(container) {
+        var s = getState(container);
+        var canvas = container.querySelector('.diagram-canvas');
+        if (canvas) canvas.style.transform = 'translate(' + s.panX + 'px, ' + s.panY + 'px) scale(' + s.scale + ')';
+      }
+
+      function clampScale(val) {
+        return Math.min(MAX_SCALE, Math.max(MIN_SCALE, val));
+      }
+
+      function zoomAroundPoint(s, centerX, centerY, newScale) {
+        var oldScale = s.scale;
+        newScale = clampScale(newScale);
+        if (newScale === oldScale) return;
+        var ratio = newScale / oldScale;
+        s.panX = centerX - (centerX - s.panX) * ratio;
+        s.panY = centerY - (centerY - s.panY) * ratio;
+        s.scale = newScale;
+      }
+
+      // Button actions via event delegation
+      document.addEventListener('click', function(e) {
+        var btn = e.target.closest('[data-action]');
+        if (!btn) return;
+        var container = btn.closest('.diagram-container');
+        if (!container) return;
+        var s = getState(container);
+        var action = btn.dataset.action;
+
+        if (action === 'zoom-in' || action === 'zoom-out') {
+          var viewport = container.querySelector('.diagram-viewport');
+          var rect = viewport.getBoundingClientRect();
+          var centerX = rect.width / 2;
+          var centerY = rect.height / 2;
+          var delta = action === 'zoom-in' ? ZOOM_STEP : -ZOOM_STEP;
+          zoomAroundPoint(s, centerX, centerY, s.scale + delta);
+        } else if (action === 'zoom-reset') {
+          s.scale = 1; s.panX = 0; s.panY = 0;
+        } else if (action === 'fullscreen') {
+          if (document.fullscreenElement === container) {
+            document.exitFullscreen();
+          } else {
+            container.requestFullscreen();
+          }
+          return;
+        }
+        applyTransform(container);
+      });
+
+      // Mouse wheel zoom toward cursor
+      document.querySelectorAll('.diagram-viewport').forEach(function(viewport) {
+        viewport.addEventListener('wheel', function(e) {
+          e.preventDefault();
+          var container = viewport.closest('.diagram-container');
+          var s = getState(container);
+          var rect = viewport.getBoundingClientRect();
+          var cursorX = e.clientX - rect.left;
+          var cursorY = e.clientY - rect.top;
+          var delta = e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP;
+          zoomAroundPoint(s, cursorX, cursorY, s.scale + delta);
+          applyTransform(container);
+        }, { passive: false });
+      });
+
+      // Click-drag pan
+      document.querySelectorAll('.diagram-viewport').forEach(function(viewport) {
+        viewport.addEventListener('mousedown', function(e) {
+          if (e.button !== 0) return;
+          var container = viewport.closest('.diagram-container');
+          var canvas = container.querySelector('.diagram-canvas');
+          var s = getState(container);
+          var startX = e.clientX - s.panX;
+          var startY = e.clientY - s.panY;
+          canvas.classList.add('dragging');
+
+          function onMove(ev) {
+            s.panX = ev.clientX - startX;
+            s.panY = ev.clientY - startY;
+            applyTransform(container);
+          }
+          function onUp() {
+            canvas.classList.remove('dragging');
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+          }
+          document.addEventListener('mousemove', onMove);
+          document.addEventListener('mouseup', onUp);
+        });
+      });
+
+      // Reset zoom when switching definitions
+      document.querySelectorAll('.definition-item').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var type = btn.dataset.pipeline;
+          var panel = document.querySelector('.definition-panel[data-pipeline="' + type + '"]');
+          if (!panel) return;
+          var container = panel.querySelector('.diagram-container');
+          if (!container) return;
+          var s = getState(container);
+          s.scale = 1; s.panX = 0; s.panY = 0;
+          applyTransform(container);
+        });
+      });
+    })();
+  </script>
 </body>
 </html>
