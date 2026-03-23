@@ -103,4 +103,28 @@ class TestStepDefinition < Minitest::Test
 
     assert_includes error.message, "unsupported enqueue options: queu"
   end
+
+  def test_defaults_branch_key_to_nil
+    step = GoodPipeline::StepDefinition.new(key: :a, job_class: DummyJob)
+
+    assert_nil step.branch_key
+  end
+
+  def test_defaults_branch_arm_to_nil
+    step = GoodPipeline::StepDefinition.new(key: :a, job_class: DummyJob)
+
+    assert_nil step.branch_arm
+  end
+
+  def test_initializes_with_branch_metadata
+    step = GoodPipeline::StepDefinition.new(
+      key: :transcode_hd,
+      job_class: DummyJob,
+      branch_key: :format_check,
+      branch_arm: :hd
+    )
+
+    assert_equal :format_check, step.branch_key
+    assert_equal :hd, step.branch_arm
+  end
 end

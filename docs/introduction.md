@@ -25,7 +25,8 @@ GoodPipeline solves this by building a formal coordination state machine, DAG va
 
 ## Key features
 
-- **DAG topology via `run` DSL** — define steps and their dependencies with a single verb
+- **DAG topology via `run` DSL** — define steps and their dependencies
+- **Conditional branching** — take different paths at runtime with the `branch` DSL
 - **Parallel execution** — steps without dependencies run concurrently
 - **Three failure strategies** — `:halt`, `:continue`, and `:ignore` at pipeline and step level
 - **Pipeline chaining** — serial chains, fan-out, fan-in, and parallel start

@@ -39,9 +39,13 @@ end
 | `on_success` | Callback for succeeded | `nil` |
 | `on_failure` | Callback for failed or halted | `nil` |
 
+## DSL verbs
+
+GoodPipeline has two DSL verbs: `run` for defining steps, and `branch` for conditional paths. See [Conditional Branching](/branching) for the `branch` DSL.
+
 ## The `run` DSL verb
 
-`run` is the **only** DSL verb. All DAG topology is expressed through `after:` edges:
+All DAG topology is expressed through `after:` edges:
 
 ```ruby
 run :step_key, JobClass,

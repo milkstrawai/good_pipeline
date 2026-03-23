@@ -105,6 +105,52 @@ Set at the pipeline level with `failure_strategy`:
 
 Per-step overrides via `on_failure:` in `run` apply to that step's outgoing edges only.
 
+### Conditional branching
+
+Use `branch` to take different paths at runtime based on application state:
+
+```ruby
+class MediaPipeline < GoodPipeline::Pipeline
+  def configure(media_id:)
+    run :analyze, AnalyzeJob, with: { media_id: media_id }
+
+    branch :format_check, after: :analyze, by: :detect_format do
+      on :hd do
+        run :transcode_hd, TranscodeHDJob, with: { media_id: media_id }
+        run :upscale, UpscaleJob, with: { media_id: media_id }, after: :transcode_hd
+      end
+
+      on :sd do
+        run :transcode_sd, TranscodeSDJob, with: { media_id: media_id }
+      end
+    end
+
+    run :publish, PublishJob, after: :format_check
+  end
+
+  private
+
+  def detect_format
+    Media.find(params[:media_id]).hd? ? :hd : :sd
+  end
+end
+```
+
+The `by:` method is evaluated at runtime when the branch step is reached. The matching arm runs; other arms are skipped. `after: :format_check` waits for whichever arm was chosen to complete.
+
+Arms can also be empty for an if-without-else pattern:
+
+```ruby
+branch :quality_check, after: :analyze, by: :needs_processing do
+  on :yes do
+    run :process, ProcessJob
+  end
+  on :no  # skip — pipeline continues to next step
+end
+```
+
+The dashboard renders branches as diamond decision nodes with labeled edges.
+
 ### Pipeline chaining
 
 Chain pipelines together with `.then()`:

@@ -10,7 +10,7 @@ module GoodPipeline
       end
 
       pipeline_record = GoodPipeline::PipelineRecord.find(pipeline_id)
-      pipeline = pipeline_record.type.constantize.for_callback(pipeline_record)
+      pipeline = pipeline_record.type.constantize.reconstruct(pipeline_record)
 
       errors = []
 

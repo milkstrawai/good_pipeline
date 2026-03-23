@@ -4,10 +4,10 @@ module GoodPipeline
   class StepRecord < ActiveRecord::Base
     self.table_name = "good_pipeline_steps"
 
-    TERMINAL_COORDINATION_STATUSES = %w[succeeded failed skipped].freeze
+    TERMINAL_COORDINATION_STATUSES = %w[succeeded failed skipped skipped_by_branch].freeze
 
     VALID_COORDINATION_TRANSITIONS = {
-      "pending" => %w[enqueued skipped],
+      "pending" => %w[enqueued skipped skipped_by_branch succeeded],
       "enqueued" => %w[succeeded failed]
     }.freeze
 
@@ -16,10 +16,13 @@ module GoodPipeline
       enqueued: "enqueued",
       succeeded: "succeeded",
       failed: "failed",
-      skipped: "skipped"
+      skipped: "skipped",
+      skipped_by_branch: "skipped_by_branch"
     }
 
     enum :on_failure_strategy, { halt: "halt", continue: "continue", ignore: "ignore" }
+
+    store_accessor :branch, :decides, :branch_result, :branch_key, :branch_arm, :empty_arms
 
     belongs_to :pipeline,
                class_name: "GoodPipeline::PipelineRecord",
@@ -45,6 +48,9 @@ module GoodPipeline
     has_many :downstream_steps,
              through: :downstream_dependencies,
              source: :step
+
+    def branch_step? = job_class == GoodPipeline::Pipeline::BRANCH_JOB_CLASS
+    def branch_arm_step? = branch_arm.present?
 
     def duration
       return nil unless good_job_id

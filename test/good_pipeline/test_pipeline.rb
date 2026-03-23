@@ -444,4 +444,258 @@ class TestPipeline < Minitest::Test
 
     assert_equal({ id: 99 }, instance.step_definitions[0].params)
   end
+
+  # --- Branch DSL ---
+
+  def test_branch_creates_step_definitions_for_each_arm
+    klass = Class.new(GoodPipeline::Pipeline) do
+      def configure(**)
+        run :analyze, TestPipeline::DownloadJob
+
+        branch :format_check, after: :analyze, by: :pick_format do
+          on(:hd) { run :transcode_hd, TestPipeline::TranscodeJob }
+          on(:sd) { run :transcode_sd, TestPipeline::ThumbnailJob }
+        end
+      end
+
+      def pick_format = :hd
+    end
+
+    instance = klass.build
+
+    assert_equal 4, instance.step_definitions.size
+    assert_equal %i[analyze transcode_hd transcode_sd format_check], instance.step_definitions.map(&:key)
+  end
+
+  def test_branch_merges_after_dependencies_into_arm_steps
+    klass = Class.new(GoodPipeline::Pipeline) do
+      def configure(**)
+        run :analyze, TestPipeline::DownloadJob
+
+        branch :format_check, after: :analyze, by: :pick do
+          on(:hd) { run :transcode_hd, TestPipeline::TranscodeJob }
+          on(:sd) { run :transcode_sd, TestPipeline::ThumbnailJob }
+        end
+      end
+
+      def pick = :hd
+    end
+
+    instance = klass.build
+    hd_step = instance.steps_by_key[:transcode_hd]
+    sd_step = instance.steps_by_key[:transcode_sd]
+
+    assert_equal [:format_check], hd_step.dependencies
+    assert_equal [:format_check], sd_step.dependencies
+  end
+
+  def test_branch_registers_alias_for_after_expansion
+    klass = Class.new(GoodPipeline::Pipeline) do
+      def configure(**)
+        run :analyze, TestPipeline::DownloadJob
+
+        branch :format_check, after: :analyze, by: :pick do
+          on(:hd) { run :transcode_hd, TestPipeline::TranscodeJob }
+          on(:sd) { run :transcode_sd, TestPipeline::ThumbnailJob }
+        end
+
+        run :publish, TestPipeline::PublishJob, after: :format_check
+      end
+
+      def pick = :hd
+    end
+
+    instance = klass.build
+    publish_step = instance.steps_by_key[:publish]
+
+    assert_equal %i[transcode_hd transcode_sd], publish_step.dependencies
+  end
+
+  def test_branch_with_single_arm_is_valid
+    klass = Class.new(GoodPipeline::Pipeline) do
+      def configure(**)
+        run :analyze, TestPipeline::DownloadJob
+
+        branch :check, after: :analyze, by: :pick do
+          on(:process) { run :step_a, TestPipeline::TranscodeJob }
+          on :skip
+        end
+
+        run :finish, TestPipeline::PublishJob, after: :check
+      end
+
+      def pick = :process
+    end
+
+    instance = klass.build
+    branch_step = instance.steps_by_key[:check]
+
+    assert_equal [:skip], branch_step.empty_arms
+  end
+
+  def test_branch_key_cannot_collide_with_step_key
+    klass = Class.new(GoodPipeline::Pipeline) do
+      def configure(**)
+        run :analyze, TestPipeline::DownloadJob
+
+        branch :analyze, after: :analyze, by: :pick do
+          on(:hd) { run :transcode_hd, TestPipeline::TranscodeJob }
+          on(:sd) { run :transcode_sd, TestPipeline::ThumbnailJob }
+        end
+      end
+
+      def pick = :hd
+    end
+
+    error = assert_raises(GoodPipeline::InvalidPipelineError) { klass.build }
+
+    assert_includes error.message, "duplicate step key :analyze"
+  end
+
+  def test_branch_outside_configure_raises
+    klass = Class.new(GoodPipeline::Pipeline) do
+      def configure(**) = run(:a, TestPipeline::DownloadJob)
+    end
+    instance = klass.build
+
+    assert_raises(GoodPipeline::ConfigurationError) do
+      instance.send(:branch, :check, after: :a, by: :pick) do
+        on(:x) { run :b, TestPipeline::TranscodeJob }
+      end
+    end
+  end
+
+  def test_branch_with_multiple_steps_per_arm
+    klass = Class.new(GoodPipeline::Pipeline) do
+      def configure(**)
+        run :analyze, TestPipeline::DownloadJob
+
+        branch :format_check, after: :analyze, by: :pick do
+          on :hd do
+            run :transcode_hd, TestPipeline::TranscodeJob
+            run :upscale, TestPipeline::ThumbnailJob, after: :transcode_hd
+          end
+          on(:sd) { run :transcode_sd, TestPipeline::PublishJob }
+        end
+      end
+
+      def pick = :hd
+    end
+
+    instance = klass.build
+
+    assert_equal 5, instance.step_definitions.size
+    upscale = instance.steps_by_key[:upscale]
+
+    assert_equal :format_check, upscale.branch_key
+    assert_equal :hd, upscale.branch_arm
+    assert_includes upscale.dependencies, :format_check
+    assert_includes upscale.dependencies, :transcode_hd
+  end
+
+  def test_branch_with_intra_arm_after_dependencies
+    klass = Class.new(GoodPipeline::Pipeline) do
+      def configure(**)
+        run :analyze, TestPipeline::DownloadJob
+
+        branch :check, after: :analyze, by: :pick do
+          on :a do
+            run :step1, TestPipeline::TranscodeJob
+            run :step2, TestPipeline::ThumbnailJob, after: :step1
+          end
+          on(:b) { run :step3, TestPipeline::PublishJob }
+        end
+      end
+
+      def pick = :a
+    end
+
+    instance = klass.build
+    step2 = instance.steps_by_key[:step2]
+
+    assert_equal %i[check step1], step2.dependencies
+  end
+
+  def test_branch_by_names_decision_method
+    klass = Class.new(GoodPipeline::Pipeline) do
+      def configure(**)
+        run :start, TestPipeline::DownloadJob
+
+        branch :decision, after: :start, by: :my_decision do
+          on(:left) { run :go_left, TestPipeline::TranscodeJob }
+          on(:right) { run :go_right, TestPipeline::ThumbnailJob }
+        end
+      end
+
+      def my_decision = :left
+    end
+
+    instance = klass.build
+    branch_step = instance.steps_by_key[:decision]
+
+    assert_equal :my_decision, branch_step.decides
+  end
+
+  def test_nested_branch_raises_configuration_error
+    klass = Class.new(GoodPipeline::Pipeline) do
+      def configure(**)
+        run :start, TestPipeline::DownloadJob
+
+        branch :outer, after: :start, by: :pick_outer do
+          on :a do
+            run :step_a, TestPipeline::TranscodeJob
+            branch :inner, after: :step_a, by: :pick_inner do
+              on(:x) { run :step_x, TestPipeline::ThumbnailJob }
+              on(:y) { run :step_y, TestPipeline::PublishJob }
+            end
+          end
+          on(:b) { run :step_b, TestPipeline::CleanupJob }
+        end
+      end
+
+      def pick_outer = :a
+      def pick_inner = :x
+    end
+
+    error = assert_raises(GoodPipeline::ConfigurationError) { klass.build }
+
+    assert_includes error.message, "nested branches are not supported"
+  end
+
+  def test_empty_branch_arm_is_valid
+    klass = Class.new(GoodPipeline::Pipeline) do
+      def configure(**)
+        run :start, TestPipeline::DownloadJob
+
+        branch :check, after: :start, by: :pick do
+          on(:process) { run :do_work, TestPipeline::TranscodeJob }
+          on :skip
+        end
+
+        run :finish, TestPipeline::PublishJob, after: :check
+      end
+
+      def pick = :skip
+    end
+
+    instance = klass.build
+
+    assert_equal [:skip], instance.steps_by_key[:check].empty_arms
+    assert_equal [:do_work], instance.steps_by_key[:finish].dependencies
+  end
+
+  def test_branch_with_no_arms_raises
+    klass = Class.new(GoodPipeline::Pipeline) do
+      def configure(**)
+        run :start, TestPipeline::DownloadJob
+        branch(:check, after: :start, by: :pick) {} # rubocop:disable Lint/EmptyBlock
+      end
+
+      def pick = :x
+    end
+
+    error = assert_raises(GoodPipeline::InvalidPipelineError) { klass.build }
+
+    assert_includes error.message, "branch :check must have at least 1 arm"
+  end
 end

@@ -27,6 +27,7 @@ class CreateGoodPipelineTables < ActiveRecord::Migration[8.1]
       t.string :coordination_status, null: false, default: "pending"
       t.string :on_failure_strategy
       t.jsonb :enqueue_options, null: false, default: {}
+      t.jsonb :branch, null: false, default: {}
       t.uuid :good_job_batch_id
       t.uuid :good_job_id
       t.integer :attempts
@@ -37,6 +38,7 @@ class CreateGoodPipelineTables < ActiveRecord::Migration[8.1]
     end
 
     add_index :good_pipeline_steps, %i[pipeline_id key], unique: true
+    add_index :good_pipeline_steps, :coordination_status
 
     create_table :good_pipeline_dependencies do |t|
       t.references :pipeline, null: false, foreign_key: { to_table: :good_pipeline_pipelines }, type: :uuid
@@ -48,5 +50,8 @@ class CreateGoodPipelineTables < ActiveRecord::Migration[8.1]
       t.references :upstream_pipeline, null: false, foreign_key: { to_table: :good_pipeline_pipelines }, type: :uuid
       t.references :downstream_pipeline, null: false, foreign_key: { to_table: :good_pipeline_pipelines }, type: :uuid
     end
+
+    add_index :good_pipeline_chains, %i[upstream_pipeline_id downstream_pipeline_id], unique: true,
+                                                                                      name: :index_good_pipeline_chains_uniqueness
   end
 end

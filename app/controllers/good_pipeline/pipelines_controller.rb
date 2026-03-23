@@ -19,14 +19,15 @@ module GoodPipeline
       pipeline_ids = pipeline_types.filter_map do |type|
         PipelineRecord.where(type: type).order(created_at: :desc).pick(:id)
       end
-      @pipelines = PipelineRecord.includes(:steps, dependencies: %i[step depends_on_step])
+      @pipelines = PipelineRecord.includes(steps: :upstream_steps, dependencies: %i[step depends_on_step])
                                  .where(id: pipeline_ids)
                                  .sort_by(&:type)
     end
 
     def show
       scope = PipelineRecord.includes(
-        :upstream_pipelines, :downstream_pipelines, :steps,
+        :upstream_pipelines, :downstream_pipelines,
+        steps: :upstream_steps,
         dependencies: %i[step depends_on_step]
       )
       @pipeline = scope.find(params[:id])

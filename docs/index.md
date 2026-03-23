@@ -17,7 +17,7 @@ features:
   - title: Postgres Only
     details: All state lives in Postgres — no Redis, no external dependencies. Step transitions and job enqueues are atomically coupled in a single database transaction.
   - title: DAG Orchestration
-    details: Define pipelines as directed acyclic graphs with the run DSL. Steps run in parallel when possible and wait for dependencies automatically. Fan-out, fan-in, and chaining are all built in.
+    details: Define pipelines as directed acyclic graphs with the run and branch DSL. Steps run in parallel when possible, wait for dependencies automatically, and take different paths based on runtime decisions. Fan-out, fan-in, branching, and chaining are all built in.
   - title: Built-in Dashboard
     details: A mountable Rails engine with pipeline executions, step details with DAG visualization, and a pipeline definitions catalog. No build step — uses CDN assets.
 ---

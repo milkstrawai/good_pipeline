@@ -29,7 +29,7 @@ The index page lists all pipeline executions with:
 The show page displays a single pipeline execution with:
 
 - Pipeline metadata: status, failure strategy, params, created time, duration
-- **Mermaid DAG visualization** with color-coded step statuses
+- Mermaid DAG visualization with color-coded step statuses, diamond nodes for branches, and labeled arm edges
 - Steps table with coordination status, job class, duration, error info, and links to the GoodJob dashboard
 - Upstream and downstream chain links (if the pipeline is part of a chain)
 

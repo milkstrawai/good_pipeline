@@ -72,6 +72,7 @@ This enqueues `:fetch` immediately. When it succeeds, `:transform` is enqueued. 
 ## Next steps
 
 - [Defining Pipelines](/defining-pipelines) — full DSL reference and DAG patterns
+- [Conditional Branching](/branching) — take different paths at runtime
 - [Failure Strategies](/failure-strategies) — control what happens when steps fail
 - [Pipeline Chaining](/pipeline-chaining) — wire pipelines together
 - [Monitoring](/monitoring) — inspect pipeline and step state

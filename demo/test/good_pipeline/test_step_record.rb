@@ -100,12 +100,12 @@ class TestStepRecord < ActiveSupport::TestCase
 
   # --- transition_coordination_status_to! invalid transitions ---
 
-  def test_transition_pending_to_succeeded_raises
+  def test_transition_pending_to_succeeded_allowed_for_branch_steps
     pipeline = create_pipeline
     step = create_step(pipeline)
-    assert_raises(GoodPipeline::InvalidTransition) do
-      step.transition_coordination_status_to!(:succeeded)
-    end
+    step.transition_coordination_status_to!(:succeeded)
+
+    assert_equal "succeeded", step.coordination_status
   end
 
   def test_transition_pending_to_failed_raises
@@ -170,10 +170,11 @@ class TestStepRecord < ActiveSupport::TestCase
     pipeline = create_pipeline
     step = create_step(pipeline, key: "transcode")
     error = assert_raises(GoodPipeline::InvalidTransition) do
-      step.transition_coordination_status_to!(:succeeded)
+      step.transition_coordination_status_to!(:failed)
     end
+
     assert_includes error.message, "transcode"
-    assert_includes error.message, "from 'pending' to 'succeeded'"
+    assert_includes error.message, "from 'pending' to 'failed'"
   end
 
   # --- Accepts symbols ---

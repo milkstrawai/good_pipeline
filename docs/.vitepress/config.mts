@@ -25,6 +25,7 @@ export default defineConfig({
           { text: 'Defining Pipelines', link: '/defining-pipelines' },
           { text: 'DAG Validation', link: '/dag-validation' },
           { text: 'Failure Strategies', link: '/failure-strategies' },
+          { text: 'Conditional Branching', link: '/branching' },
           { text: 'Pipeline Chaining', link: '/pipeline-chaining' },
           { text: 'Lifecycle Callbacks', link: '/callbacks' },
         ],

@@ -57,6 +57,7 @@ The `coordination_status` column is the authoritative step state:
 | `succeeded` | Job completed successfully — terminal |
 | `failed` | Job exhausted retries or was discarded — terminal |
 | `skipped` | Skipped due to upstream failure propagation — terminal |
+| `skipped_by_branch` | Branch decision selected a different arm — terminal, counts as satisfied for downstream |
 
 ## Querying with ActiveRecord
 

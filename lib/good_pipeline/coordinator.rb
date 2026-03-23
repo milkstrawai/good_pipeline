@@ -59,9 +59,15 @@ module GoodPipeline
       skipped_downstream_ids&.each { |downstream_step_id| try_enqueue_step(downstream_step_id) }
     end
 
-    def self.resolve_step(locked_step)
+    def self.resolve_step(locked_step) # rubocop:disable Metrics/MethodLength
       if should_skip?(locked_step)
         locked_step.transition_coordination_status_to!(:skipped)
+        locked_step.downstream_steps.pluck(:id)
+      elsif locked_step.branch_step? && all_upstreams_satisfied?(locked_step)
+        resolve_branch_step(locked_step)
+        locked_step.downstream_steps.pluck(:id)
+      elsif should_skip_by_branch?(locked_step)
+        locked_step.transition_coordination_status_to!(:skipped_by_branch)
         locked_step.downstream_steps.pluck(:id)
       else
         enqueue_user_job(locked_step) if all_upstreams_satisfied?(locked_step)
@@ -126,6 +132,7 @@ module GoodPipeline
     def self.all_upstreams_satisfied?(step)
       step.upstream_steps.all? do |upstream|
         upstream.succeeded? ||
+          upstream.skipped_by_branch? ||
           (upstream.failed? && effective_strategy(upstream) == :ignore)
       end
     end
@@ -135,9 +142,35 @@ module GoodPipeline
         step.upstream_steps.any? { |upstream| permanently_unsatisfied?(upstream) }
     end
 
+    def self.resolve_branch_step(step) # rubocop:disable Metrics/AbcSize
+      pipeline_class = step.pipeline.type.constantize
+      decides_method = step.decides.to_sym
+
+      unless pipeline_class.method_defined?(decides_method) ||
+             pipeline_class.private_method_defined?(decides_method)
+        raise ConfigurationError, "Pipeline #{step.pipeline.type} does not define decision method :#{decides_method}"
+      end
+
+      instance = pipeline_class.reconstruct(step.pipeline)
+      result = instance.send(decides_method).to_s
+
+      step.update_column(:branch, step.branch.merge("branch_result" => result))
+      step.transition_coordination_status_to!(:succeeded)
+    end
+
+    def self.should_skip_by_branch?(step)
+      return false unless step.branch_arm_step?
+
+      branch_step = step.pipeline.steps.find_by(key: step.branch_key)
+      return false unless branch_step&.branch_result
+
+      branch_step.branch_result != step.branch_arm
+    end
+
     def self.permanently_unsatisfied?(upstream)
       upstream.terminal_coordination_status? &&
         !upstream.succeeded? &&
+        !upstream.skipped_by_branch? &&
         effective_strategy(upstream) != :ignore
     end
 
@@ -162,6 +195,7 @@ module GoodPipeline
     private_class_method :record_step_outcome, :record_step_failure,
                          :propagate_halt, :unblock_downstream_steps,
                          :all_upstreams_satisfied?, :should_skip?, :permanently_unsatisfied?,
+                         :should_skip_by_branch?, :resolve_branch_step,
                          :skip_all_pending_steps, :effective_strategy,
                          :enqueue_user_job, :build_step_batch, :enqueue_step_job,
                          :derive_terminal_status, :resolve_step

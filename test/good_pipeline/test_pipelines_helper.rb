@@ -30,12 +30,19 @@ class TestPipelinesHelper < Minitest::Test
     end
   end
 
-  FakePipeline = Struct.new(:terminal, :updated_at, :created_at, :steps, :dependencies) do
+  FakePipeline = Struct.new(:terminal, :updated_at, :created_at, :steps, :dependencies, :branches) do
     def terminal? = terminal
+
+    def initialize(terminal: false, updated_at: nil, created_at: nil, steps: [], dependencies: [], branches: [])
+      super(terminal, updated_at, created_at, steps, dependencies, branches)
+    end
   end
 
-  FakeStep = Struct.new(:key, :coordination_status, :good_job_id)
-  FakeDependency = Struct.new(:depends_on_step, :step)
+  FakeStep = Struct.new(:key, :coordination_status, :good_job_id, :job_class, :branch_arm, :id, :empty_arms) do
+    def branch_step? = job_class == GoodPipeline::Pipeline::BRANCH_JOB_CLASS
+    def branch_arm_step? = branch_arm.present?
+  end
+  FakeDependency = Struct.new(:depends_on_step, :step, :step_id)
 
   # --- humanized_type ---
 
@@ -164,11 +171,12 @@ class TestPipelinesHelper < Minitest::Test
   # --- mermaid_definition_diagram ---
 
   def test_mermaid_definition_diagram
-    step_a = FakeStep.new(key: "download")
-    step_b = FakeStep.new(key: "process")
+    step_a = FakeStep.new(key: "download", id: 1)
+    step_b = FakeStep.new(key: "process", id: 2)
     dependency = FakeDependency.new(
       depends_on_step: step_a,
-      step: step_b
+      step: step_b,
+      step_id: 2
     )
 
     pipeline = FakePipeline.new(steps: [step_a, step_b], dependencies: [dependency])
@@ -179,12 +187,15 @@ class TestPipelinesHelper < Minitest::Test
     assert_includes result, 'download("download"):::step'
     assert_includes result, "download --> process"
     assert_includes result, "classDef step"
+    assert_includes result, "end_node"
+    assert_includes result, ":::terminal"
+    assert_includes result, "process --> end_node"
   end
 
   # --- mermaid_diagram ---
 
   def test_mermaid_diagram_includes_status_classes
-    step = FakeStep.new(key: "download", coordination_status: "succeeded")
+    step = FakeStep.new(key: "download", coordination_status: "succeeded", id: 1)
     pipeline = FakePipeline.new(steps: [step], dependencies: [])
 
     result = mermaid_diagram(pipeline)
