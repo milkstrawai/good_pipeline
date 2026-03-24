@@ -19,7 +19,7 @@ module GoodPipeline
     end
 
     def humanized_type(pipeline_type)
-      pipeline_type.to_s.underscore.titleize
+      pipeline_type.to_s.safe_constantize&.display_name || pipeline_type.to_s.underscore.titleize
     end
 
     def relative_time_tag(datetime)

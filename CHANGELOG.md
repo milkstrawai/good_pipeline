@@ -12,6 +12,7 @@
 - **`branch` JSONB column** — stores all branch metadata (`decides`, `branch_result`, `branch_key`, `branch_arm`, `empty_arms`) via `store_accessor` on a single column on the steps table.
 - **Database indexes** — added index on `coordination_status` (steps) and a unique index on chains.
 - **Step-level failure strategy validation** — `StepDefinition` rejects invalid `on_failure:` values at definition time with a `ConfigurationError`.
+- **`display_name`** — optional class-level DSL method to override how a pipeline appears on the dashboard. Falls back to the default `underscore.titleize` format when not set.
 
 ### Changed
 

@@ -5,7 +5,7 @@ module GoodPipeline
 
   class Pipeline # rubocop:disable Metrics/ClassLength
     VALID_FAILURE_STRATEGIES = %i[halt continue ignore].freeze
-    DSL_ATTRIBUTES = %i[description failure_strategy on_complete on_success on_failure].freeze
+    DSL_ATTRIBUTES = %i[display_name description failure_strategy on_complete on_success on_failure].freeze
 
     # --- Class-level DSL ---
 
@@ -15,6 +15,12 @@ module GoodPipeline
         DSL_ATTRIBUTES.each do |attribute|
           subclass.instance_variable_set(:"@#{attribute}", instance_variable_get(:"@#{attribute}"))
         end
+      end
+
+      def display_name(name = :__unset__)
+        return @display_name if name == :__unset__
+
+        @display_name = name
       end
 
       def description(text = :__unset__)

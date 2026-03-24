@@ -33,6 +33,7 @@ end
 
 | Method | Purpose | Default |
 |---|---|---|
+| `display_name` | Override the pipeline name shown on the dashboard | `nil` (falls back to `underscore.titleize`) |
 | `description` | Human-readable label for the dashboard | `nil` |
 | `failure_strategy` | Pipeline-level failure handling policy | `:halt` |
 | `on_complete` | Callback for any terminal state | `nil` |
