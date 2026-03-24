@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.2.0] - 2026-03-24
+
 ### Added
 
 - **Conditional branching** — `branch` DSL verb with `on` arms for runtime decision-making. The `by:` option names a method that returns which arm to execute. Non-matching arms are `skipped_by_branch` (satisfied for downstream). Decision results are validated against declared arms — undeclared results fail the branch step with a `ConfigurationError` and the pipeline reaches a terminal state through normal failure propagation.
