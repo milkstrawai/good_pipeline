@@ -85,11 +85,12 @@ Both pipelines start immediately. `MergeMediaPipeline` waits for both to succeed
 
 1. Creates downstream pipeline records with `status: pending` — params are stored immediately at chain registration time
 2. Creates `good_pipeline_chains` rows linking upstream to downstream pipeline IDs
-3. After any upstream pipeline reaches a terminal state, the chain coordinator checks if all upstreams for each downstream have succeeded
-4. If all upstreams succeeded, the downstream pipeline starts (root steps are enqueued)
-5. If any upstream fails, halts, or is skipped, the downstream pipeline is set to `skipped`
+3. If any upstream has already reached a terminal state, immediately triggers chain propagation so the downstream is started or skipped
+4. After any upstream pipeline reaches a terminal state, the chain coordinator checks if all upstreams for each downstream have succeeded
+5. If all upstreams succeeded, the downstream pipeline starts (root steps are enqueued)
+6. If any upstream fails, halts, or is skipped, the downstream pipeline is set to `skipped`
 
-The chain coordinator uses the **same atomic row-locking pattern** (`FOR UPDATE SKIP LOCKED`) as the step-level coordinator to prevent double-start races.
+The chain coordinator uses the **same atomic row-locking pattern** (`FOR UPDATE SKIP LOCKED`) as the step-level coordinator to prevent double-start races. This means `.then` is safe to call at any time — even after the upstream has already completed.
 
 ## Failure propagation
 

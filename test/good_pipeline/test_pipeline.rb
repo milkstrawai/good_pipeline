@@ -215,7 +215,7 @@ class TestPipeline < Minitest::Test
         run :download, TestPipeline::DownloadJob,
             with: { url: "https://example.com" },
             after: :transcode,
-            failure_strategy: :retry,
+            on_failure: :ignore,
             enqueue: { queue: "high", priority: 10, wait: 300 }
       end
     end
@@ -225,7 +225,7 @@ class TestPipeline < Minitest::Test
 
     assert_equal({ url: "https://example.com" }, step.params)
     assert_equal [:transcode], step.dependencies
-    assert_equal :retry, step.failure_strategy
+    assert_equal :ignore, step.failure_strategy
     assert_equal({ queue: "high", priority: 10, wait: 300 }, step.enqueue_options)
   end
 
@@ -697,5 +697,73 @@ class TestPipeline < Minitest::Test
     error = assert_raises(GoodPipeline::InvalidPipelineError) { klass.build }
 
     assert_includes error.message, "branch :check must have at least 1 arm"
+  end
+
+  # --- Sequential branches expand aliases correctly ---
+
+  def test_sequential_branches_second_depends_on_first_exit_steps
+    klass = Class.new(GoodPipeline::Pipeline) do
+      def configure(**)
+        run :ingest, TestPipeline::DownloadJob
+
+        branch :classify, after: :ingest, by: :content_type do
+          on :text do
+            run :extract_text, TestPipeline::TranscodeJob
+            run :run_nlp, TestPipeline::ThumbnailJob, after: :extract_text
+          end
+          on :image do
+            run :detect_objects, TestPipeline::PublishJob
+          end
+        end
+
+        branch :priority, after: :classify, by: :review_priority do
+          on(:high) { run :fast_review, TestPipeline::CleanupJob }
+          on(:low) { run :standard_review, TestPipeline::DownloadJob }
+        end
+
+        run :publish, TestPipeline::PublishJob, after: :priority
+      end
+
+      def content_type = :text
+      def review_priority = :high
+    end
+
+    instance = klass.build
+    priority_step = instance.steps_by_key[:priority]
+
+    assert_includes priority_step.dependencies, :run_nlp,
+                    "Second branch should depend on first branch's exit steps"
+    assert_includes priority_step.dependencies, :detect_objects,
+                    "Second branch should depend on first branch's exit steps"
+    refute_includes priority_step.dependencies, :classify,
+                    "Second branch should NOT depend on first branch's sentinel step"
+  end
+
+  # --- Step-level on_failure validation ---
+
+  def test_run_with_valid_on_failure_strategy
+    klass = Class.new(GoodPipeline::Pipeline) do
+      def configure(**)
+        run :a, TestPipeline::DownloadJob, on_failure: :ignore
+      end
+    end
+
+    instance = klass.build
+
+    assert_equal :ignore, instance.step_definitions.first.failure_strategy
+  end
+
+  def test_run_with_invalid_on_failure_strategy_raises
+    klass = Class.new(GoodPipeline::Pipeline) do
+      def configure(**)
+        run :a, TestPipeline::DownloadJob, on_failure: :bogus
+      end
+    end
+
+    error = assert_raises(GoodPipeline::ConfigurationError) { klass.build }
+    assert_includes error.message, "invalid step failure strategy :bogus"
+    assert_includes error.message, ":halt"
+    assert_includes error.message, ":continue"
+    assert_includes error.message, ":ignore"
   end
 end

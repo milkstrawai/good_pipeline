@@ -114,6 +114,20 @@ end
 
 Each branch decides independently. The second branch runs after whichever arm of the first branch completes.
 
+## Error handling
+
+If the decision method returns a value that does not match any declared arm (including empty arms), the branch step is marked `failed` with a `ConfigurationError`. The error class and message are stored on the step record and the pipeline proceeds through normal failure propagation (`:halt`, `:continue`, or `:ignore` depending on strategy).
+
+```ruby
+branch :check, after: :analyze, by: :pick do
+  on(:hd) { run :transcode_hd, TranscodeHDJob }
+  on(:sd) { run :transcode_sd, TranscodeSDJob }
+end
+
+# If pick returns :unknown → branch step fails with:
+# "branch :check decision returned "unknown", but only :hd, :sd are declared"
+```
+
 ## Limitations
 
 - **Nested branches** (a branch inside another branch's arm) are not supported. This is validated and rejected with a `ConfigurationError`.

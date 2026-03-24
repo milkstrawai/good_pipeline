@@ -7,7 +7,7 @@ module GoodPipeline
     TERMINAL_COORDINATION_STATUSES = %w[succeeded failed skipped skipped_by_branch].freeze
 
     VALID_COORDINATION_TRANSITIONS = {
-      "pending" => %w[enqueued skipped skipped_by_branch succeeded],
+      "pending" => %w[enqueued skipped skipped_by_branch succeeded failed],
       "enqueued" => %w[succeeded failed]
     }.freeze
 

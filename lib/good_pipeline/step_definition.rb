@@ -13,6 +13,7 @@ module GoodPipeline
       @job_class = job_class
       @params = params.freeze
       @dependencies = Array(dependencies).freeze
+      validate_failure_strategy!(failure_strategy)
       @failure_strategy = failure_strategy
       validate_enqueue_options!(enqueue_options)
       @enqueue_options = enqueue_options.freeze
@@ -24,6 +25,16 @@ module GoodPipeline
     end
 
     private
+
+    def validate_failure_strategy!(strategy)
+      return if strategy.nil?
+
+      valid = GoodPipeline::Pipeline::VALID_FAILURE_STRATEGIES
+      return if valid.include?(strategy)
+
+      raise ConfigurationError,
+            "invalid step failure strategy :#{strategy}, must be one of #{valid.map { |s| ":#{s}" }.join(", ")}"
+    end
 
     def validate_enqueue_options!(options)
       unsupported = options.keys.map(&:to_sym) - SUPPORTED_ENQUEUE_OPTIONS

@@ -108,12 +108,12 @@ class TestStepRecord < ActiveSupport::TestCase
     assert_equal "succeeded", step.coordination_status
   end
 
-  def test_transition_pending_to_failed_raises
+  def test_transition_pending_to_failed_allowed_for_branch_resolution_failures
     pipeline = create_pipeline
     step = create_step(pipeline)
-    assert_raises(GoodPipeline::InvalidTransition) do
-      step.transition_coordination_status_to!(:failed)
-    end
+    step.transition_coordination_status_to!(:failed)
+
+    assert_equal "failed", step.coordination_status
   end
 
   def test_transition_enqueued_to_pending_raises
@@ -169,12 +169,13 @@ class TestStepRecord < ActiveSupport::TestCase
   def test_error_message_includes_step_key
     pipeline = create_pipeline
     step = create_step(pipeline, key: "transcode")
+    step.transition_coordination_status_to!(:enqueued)
     error = assert_raises(GoodPipeline::InvalidTransition) do
-      step.transition_coordination_status_to!(:failed)
+      step.transition_coordination_status_to!(:pending)
     end
 
     assert_includes error.message, "transcode"
-    assert_includes error.message, "from 'pending' to 'failed'"
+    assert_includes error.message, "from 'enqueued' to 'pending'"
   end
 
   # --- Accepts symbols ---

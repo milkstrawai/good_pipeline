@@ -127,4 +127,31 @@ class TestStepDefinition < Minitest::Test
     assert_equal :format_check, step.branch_key
     assert_equal :hd, step.branch_arm
   end
+
+  # --- Step-level failure strategy validation ---
+
+  def test_accepts_valid_failure_strategies
+    %i[halt continue ignore].each do |strategy|
+      step = GoodPipeline::StepDefinition.new(key: :a, job_class: DummyJob, failure_strategy: strategy)
+
+      assert_equal strategy, step.failure_strategy
+    end
+  end
+
+  def test_accepts_nil_failure_strategy
+    step = GoodPipeline::StepDefinition.new(key: :a, job_class: DummyJob, failure_strategy: nil)
+
+    assert_nil step.failure_strategy
+  end
+
+  def test_rejects_invalid_failure_strategy
+    error = assert_raises(GoodPipeline::ConfigurationError) do
+      GoodPipeline::StepDefinition.new(key: :a, job_class: DummyJob, failure_strategy: :bogus)
+    end
+
+    assert_includes error.message, "invalid step failure strategy :bogus"
+    assert_includes error.message, ":halt"
+    assert_includes error.message, ":continue"
+    assert_includes error.message, ":ignore"
+  end
 end

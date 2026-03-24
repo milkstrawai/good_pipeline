@@ -89,13 +89,13 @@ The coordinator resolves the effective strategy for each step's outgoing edges:
 ::: warning Important
 When a step fails with step-level `on_failure: :ignore` under a pipeline-level `:halt` strategy, the behavior may be surprising:
 
-- That step's **outgoing edges** are treated as non-blocking — its dependents remain eligible
+- That step's **entire downstream subgraph** is treated as non-blocking — its dependents and their transitive descendants remain eligible
 - The pipeline `:halt` policy **still fires** for all other unrelated pending steps
 - `halt_triggered` is still set to `true`
 - The pipeline still derives to `halted`
 :::
 
-Step-level `:ignore` scopes only to that step's outgoing edges, not to the global halt behavior of the pipeline.
+Step-level `:ignore` protects the full reachable downstream path from the ignored step, not just its immediate dependents. This ensures that if `A(ignore) -> B -> C`, both `B` and `C` remain eligible when `A` fails.
 
 ```ruby
 class MixedPipeline < GoodPipeline::Pipeline
@@ -132,7 +132,7 @@ A downstream step is marked `skipped` when it's still `pending` and at least one
 | Pipeline strategy | Step override | Effect when step fails |
 |---|---|---|
 | `:halt` | none | `halt_triggered = true`; all pending steps skipped; pipeline → `halted` |
-| `:halt` | `:ignore` on failed step | That step's dependents still eligible; all other pending steps still skipped; pipeline → `halted` |
+| `:halt` | `:ignore` on failed step | That step's full downstream subgraph still eligible; all other pending steps still skipped; pipeline → `halted` |
 | `:continue` | none | Permanently unsatisfied descendants skipped; pipeline → `failed` |
 | `:continue` | `:ignore` on failed step | That step's dependents still eligible |
 | `:ignore` | none | Nothing skipped; pipeline → `failed` if any step failed |

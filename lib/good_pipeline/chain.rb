@@ -34,6 +34,8 @@ module GoodPipeline
         end
       end
 
+      propagate_if_upstream_already_terminal
+
       Chain.new(downstream_records)
     end
 
@@ -41,6 +43,12 @@ module GoodPipeline
 
     def first_pipeline_record
       @pipeline_records.first
+    end
+
+    def propagate_if_upstream_already_terminal
+      @pipeline_records.each do |upstream_record|
+        ChainCoordinator.propagate_terminal_state(upstream_record) if upstream_record.reload.terminal?
+      end
     end
 
     def normalize_arguments(arguments)

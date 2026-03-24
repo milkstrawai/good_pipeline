@@ -111,7 +111,7 @@ module GoodPipeline
       raise NotImplementedError, "#{self.class} must implement #configure"
     end
 
-    def run(key, job_class, with: {}, after: [], failure_strategy: nil, enqueue: {}) # rubocop:disable Metrics/MethodLength
+    def run(key, job_class, with: {}, after: [], on_failure: nil, enqueue: {}) # rubocop:disable Metrics/MethodLength
       raise ConfigurationError, "run can only be called inside configure" unless @building
 
       expanded_after = expand_branch_aliases(after)
@@ -131,7 +131,7 @@ module GoodPipeline
         job_class: job_class,
         params: with,
         dependencies: expanded_after,
-        failure_strategy: failure_strategy,
+        failure_strategy: on_failure,
         enqueue_options: enqueue,
         branch_key: branch_key,
         branch_arm: branch_arm
@@ -142,7 +142,7 @@ module GoodPipeline
       raise ConfigurationError, "branch can only be called inside configure" unless @building
       raise ConfigurationError, "nested branches are not supported" if @branch_context_stack.any?
 
-      branch_dependencies = Array(after)
+      branch_dependencies = expand_branch_aliases(after)
 
       builder = BranchBuilder.new(self, key, @branch_context_stack)
       builder.instance_eval(&)

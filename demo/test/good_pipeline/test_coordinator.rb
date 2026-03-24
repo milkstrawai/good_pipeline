@@ -193,6 +193,24 @@ class TestCoordinator < ActiveSupport::TestCase
     assert_predicate pipeline.reload, :halt_triggered?
   end
 
+  def test_halt_with_step_ignore_exempts_transitive_descendants
+    pipeline = create_pipeline(on_failure_strategy: "halt")
+    pipeline.update_columns(status: "running")
+    step_a = build_step(pipeline, key: "a", on_failure_strategy: "ignore")
+    step_b = build_step(pipeline, key: "b", dependencies: [step_a])
+    step_c = build_step(pipeline, key: "c", dependencies: [step_b])
+    step_d = build_step(pipeline, key: "d")
+    step_a.update_columns(coordination_status: "enqueued")
+
+    GoodPipeline::Coordinator.complete_step(step_a.reload, succeeded: false)
+
+    refute_equal "skipped", step_b.reload.coordination_status
+    refute_equal "skipped", step_c.reload.coordination_status,
+                 "Transitive descendant of :ignore step should NOT be skipped by halt"
+    assert_equal "skipped", step_d.reload.coordination_status,
+                 "Unrelated step should still be skipped under :halt"
+  end
+
   # --- Continue strategy ---
 
   def test_continue_skips_only_unsatisfied_descendants
