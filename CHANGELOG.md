@@ -1,5 +1,12 @@
 ## [Unreleased]
 
+## [0.2.1] - 2026-03-24
+
+### Fixed
+
+- **`dependent: :destroy` on pipeline steps** — switched from `delete_all` to `destroy` so that destroying a pipeline properly triggers StepRecord's cascading cleanup of dependency records.
+- **Redundant database indexes** — removed single-column indexes on `steps(pipeline_id)` and `chains(upstream_pipeline_id)` that were already covered by their respective composite indexes.
+
 ## [0.2.0] - 2026-03-24
 
 ### Added
