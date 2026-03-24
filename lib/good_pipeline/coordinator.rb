@@ -17,7 +17,7 @@ module GoodPipeline
         recompute_pipeline = nil
 
         StepRecord.transaction do
-          locked_step = StepRecord.lock("FOR UPDATE SKIP LOCKED").find_by(id: step_id)
+          locked_step = StepRecord.lock("FOR UPDATE").find_by(id: step_id)
           return unless locked_step&.pending?
           return if locked_step.good_job_id.present?
 

@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+## [0.2.2] - 2026-03-24
+
+### Fixed
+
+- **Fan-in step race condition** — replaced `FOR UPDATE SKIP LOCKED` with `FOR UPDATE` in `Coordinator.try_enqueue_step`. When multiple upstreams of a fan-in step completed simultaneously, `SKIP LOCKED` caused concurrent callers to silently give up, leaving the downstream step stranded in `pending` forever. Blocking locks ensure the last caller always sees all upstreams satisfied and enqueues the step. Existing `pending?` and `good_job_id` guards provide idempotency.
+
 ## [0.2.1] - 2026-03-24
 
 ### Fixed
