@@ -1,6 +1,6 @@
 # Architecture
 
-This page describes GoodPipeline's internal architecture for contributors and advanced users who want to understand how the system works.
+Internal architecture for contributors and anyone who wants to understand how the system works.
 
 ## Layer diagram
 
@@ -119,7 +119,7 @@ The `Coordinator` class is the sole owner of all `coordination_status` transitio
 2. **Halt propagation** — sets `halt_triggered` and skips all pending steps (if `:halt` strategy)
 3. **Downstream unblocking** — checks and enqueues each downstream step independently via `try_enqueue_step`, which acquires a per-step row lock
 
-These three units are intentionally **not** wrapped in a single outer transaction to avoid holding locks across multiple downstream step enqueues under high-parallelism pipelines.
+These three units are intentionally not wrapped in a single outer transaction. Holding locks across multiple downstream step enqueues would be a bottleneck under high parallelism.
 
 After the three units complete, `complete_step` calls `recompute_pipeline_status` to derive the pipeline's terminal state from the current database state.
 
@@ -169,15 +169,14 @@ GoodPipeline never inspects exceptions during retry attempts. It only responds t
 
 This ensures a step is never prematurely marked `failed` on attempt 1 of 5.
 
-## Key design decisions
+## Design decisions
 
-1. **Postgres only** — all state in Postgres, enabling atomic enqueue transactions
-2. **One batch per step** — user jobs enqueued via `perform_later`, preserving all ActiveJob semantics
-3. **Terminal signal via `batch.succeeded?`** — not exception rescue
-4. **`coordination_status` is the sole decision input** — the coordinator reads only this column when making decisions
-5. **`:halted` is policy-driven** — set imperatively via `halt_triggered` flag, not pattern-derived
-6. **Coordinator owns all transitions** — `StepFinishedJob` is a thin dispatcher
-7. **Explicit transaction boundaries** — separate atomic units to minimize lock contention
-8. **DAG validation at instantiation** — before any database writes
-9. **`run` is the only DSL verb** — all topology from `after:`
-10. **`failure_strategy` and `on_failure` are distinct** — strategy vs. callback, no naming collision
+1. Postgres only -- all state in Postgres, which is what makes atomic enqueue transactions possible
+2. One batch per step -- user jobs are enqueued via `perform_later`, so all ActiveJob semantics (instrumentation, callbacks, retries, `discard_on`) work as expected
+3. Terminal signal comes from `batch.succeeded?`, not exception rescue
+4. `coordination_status` is the sole decision input -- the coordinator reads only this column
+5. `:halted` is policy-driven -- set via `halt_triggered` flag, not pattern-derived
+6. The coordinator owns all transitions; `StepFinishedJob` is a thin dispatcher
+7. Separate atomic units per transaction boundary to minimize lock contention
+8. DAG validation runs at instantiation, before any database writes
+9. `failure_strategy` and `on_failure` are distinct concepts -- strategy vs. callback, no naming collision

@@ -1,6 +1,6 @@
 # Web Dashboard
 
-GoodPipeline includes a mountable Rails engine that provides a web dashboard for inspecting pipeline executions. No build step is required — it uses Pico CSS and Mermaid.js from CDN.
+GoodPipeline ships with a mountable Rails engine for inspecting pipeline executions. No build step -- it uses Pico CSS and Mermaid.js from CDN.
 
 ## Mounting the engine
 

@@ -1,6 +1,6 @@
-# Monitoring & Introspection
+# Monitoring
 
-GoodPipeline records are standard ActiveRecord models. You can query and inspect them using familiar Rails patterns.
+GoodPipeline records are ActiveRecord models. Query and inspect them with normal Rails patterns.
 
 ## Pipeline instance methods
 

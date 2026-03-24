@@ -41,7 +41,7 @@ end
 
 ## DSL verbs
 
-GoodPipeline has two DSL verbs: `run` for defining steps, and `branch` for conditional paths. See [Conditional Branching](/branching) for the `branch` DSL.
+There are two DSL verbs: `run` for defining steps, and `branch` for conditional paths. See [Conditional Branching](/branching) for the `branch` DSL.
 
 ## The `run` DSL verb
 

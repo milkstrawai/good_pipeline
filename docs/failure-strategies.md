@@ -1,6 +1,6 @@
 # Failure Strategies
 
-GoodPipeline provides three failure strategies that control what happens when a step fails. Strategies can be set at the pipeline level and overridden per step.
+Three failure strategies control what happens when a step fails. Set one at the pipeline level, then override per step if needed.
 
 ## Pipeline-level strategy
 

@@ -1,6 +1,6 @@
 # Pipeline Chaining
 
-GoodPipeline supports wiring pipelines together into pipeline-level DAGs. A downstream pipeline starts only after all its upstream pipelines succeed.
+Pipelines can be wired together into pipeline-level DAGs. A downstream pipeline starts only after all its upstream pipelines succeed.
 
 ## Serial chain
 

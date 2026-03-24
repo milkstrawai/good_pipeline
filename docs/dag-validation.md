@@ -1,6 +1,6 @@
 # DAG Validation
 
-GoodPipeline validates the directed acyclic graph at instantiation time — **before** any step records are persisted or any jobs are enqueued. If validation fails, a `GoodPipeline::InvalidPipelineError` is raised with a descriptive message and nothing is written to the database.
+GoodPipeline validates the directed acyclic graph at instantiation time, before any step records are persisted or any jobs are enqueued. If validation fails, `GoodPipeline::InvalidPipelineError` is raised with a descriptive message and nothing is written to the database.
 
 ## What is validated
 

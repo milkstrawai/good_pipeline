@@ -16,7 +16,7 @@ bundle install
 
 ## Run the install generator
 
-GoodPipeline provides a generator that creates the necessary database migration:
+The install generator creates the database migration:
 
 ```bash
 bin/rails generate good_pipeline:install

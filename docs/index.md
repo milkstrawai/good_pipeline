@@ -4,7 +4,7 @@ layout: home
 hero:
   name: GoodPipeline
   text: DAG-based job pipelines for Rails
-  tagline: Postgres-only workflow orchestration built on GoodJob. Define multi-step workflows as directed acyclic graphs with dependency resolution, parallel execution, failure strategies, and a built-in dashboard.
+  tagline: Postgres-only workflow orchestration built on GoodJob. Define multi-step workflows as directed acyclic graphs with dependency resolution, parallel execution, and failure strategies.
   actions:
     - theme: brand
       text: Get Started
@@ -14,10 +14,10 @@ hero:
       link: https://github.com/milkstrawai/good_pipeline
 
 features:
-  - title: Postgres Only
-    details: All state lives in Postgres — no Redis, no external dependencies. Step transitions and job enqueues are atomically coupled in a single database transaction.
-  - title: DAG Orchestration
-    details: Define pipelines as directed acyclic graphs with the run and branch DSL. Steps run in parallel when possible, wait for dependencies automatically, and take different paths based on runtime decisions. Fan-out, fan-in, branching, and chaining are all built in.
-  - title: Built-in Dashboard
-    details: A mountable Rails engine with pipeline executions, step details with DAG visualization, and a pipeline definitions catalog. No build step — uses CDN assets.
+  - title: Postgres only
+    details: All state lives in Postgres. No Redis, no external dependencies. Step transitions and job enqueues happen in a single database transaction.
+  - title: DAG orchestration
+    details: Define pipelines as directed acyclic graphs with the run and branch DSL. Steps run in parallel when possible, wait for dependencies automatically, and take different paths based on runtime decisions. Fan-out, fan-in, branching, and chaining are all there.
+  - title: Web dashboard
+    details: A mountable Rails engine with pipeline executions, step details, DAG visualization, and a pipeline definitions catalog. No build step.
 ---

@@ -1,6 +1,6 @@
 # Lifecycle Callbacks
 
-GoodPipeline supports three lifecycle callbacks that fire when a pipeline reaches a terminal state.
+Three lifecycle callbacks fire when a pipeline reaches a terminal state.
 
 ## Defining callbacks
 
@@ -44,11 +44,7 @@ Note: `on_failure` does **not** fire for `skipped` pipelines. Being skipped by a
 
 ## Asynchronous dispatch
 
-Callbacks are dispatched via `PipelineCallbackJob`, a GoodJob job enqueued after the terminal state transaction commits. This means:
-
-- A slow external call (Slack, webhooks) cannot stall the coordinator
-- Callback execution cannot corrupt pipeline state
-- Callbacks benefit from GoodJob's retry mechanism if they fail
+Callbacks are dispatched via `PipelineCallbackJob`, a GoodJob job enqueued after the terminal state transaction commits. A slow external call (Slack, webhooks) cannot stall the coordinator, callback execution cannot corrupt pipeline state, and callbacks get GoodJob's retry mechanism if they fail.
 
 ## Exactly-once guarantee
 
@@ -63,4 +59,4 @@ If a callback method raises an error:
 - The pipeline remains in its terminal state
 - Other callback methods in the same bundle are still attempted
 
-Callback delivery failure is an isolated concern that never reopens or alters the terminal pipeline record.
+A callback failure never reopens or alters the terminal pipeline record.

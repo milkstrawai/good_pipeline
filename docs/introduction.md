@@ -1,10 +1,10 @@
 # Introduction
 
-GoodPipeline is a Ruby gem that brings DAG-based (Directed Acyclic Graph) workflow orchestration to Rails applications using [GoodJob](https://github.com/bensheldon/good_job) as the job backend. It allows you to define pipelines of jobs that run in parallel or with explicit dependencies, chain multiple pipelines together, and monitor execution — all without any infrastructure beyond Postgres.
+GoodPipeline is a Ruby gem for DAG-based (Directed Acyclic Graph) workflow orchestration in Rails, using [GoodJob](https://github.com/bensheldon/good_job) as the job backend. You define pipelines of jobs that run in parallel or with explicit dependencies, chain pipelines together, and monitor execution. The only infrastructure requirement is Postgres.
 
 ## Why GoodPipeline?
 
-### The gap in the ecosystem
+### What's missing
 
 The two prominent DAG workflow gems in Ruby are:
 
@@ -21,19 +21,18 @@ GoodJob's Batch feature fires a single `on_finish` callback when all jobs in a b
 - There is no concept of edges (dependencies) between individual jobs
 - There is no way to express "enqueue Job C only after Job A and Job B both succeed"
 
-GoodPipeline solves this by building a formal coordination state machine, DAG validation, and atomic coordination layer on top of Batch.
+GoodPipeline adds a coordination state machine, DAG validation, and atomic step transitions on top of Batch.
 
-## Key features
+## Features
 
-- **DAG topology via `run` DSL** — define steps and their dependencies
-- **Conditional branching** — take different paths at runtime with the `branch` DSL
-- **Parallel execution** — steps without dependencies run concurrently
-- **Three failure strategies** — `:halt`, `:continue`, and `:ignore` at pipeline and step level
-- **Pipeline chaining** — serial chains, fan-out, fan-in, and parallel start
-- **Lifecycle callbacks** — `on_complete`, `on_success`, `on_failure` with exactly-once dispatch
-- **Built-in dashboard** — mountable Rails engine with execution list, DAG visualization, and definitions catalog
-- **Automatic cleanup** — piggybacks on GoodJob's cleanup cycle
-- **Postgres-only** — all state in Postgres, no Redis, atomic enqueue transactions
+- `run` and `branch` DSL for defining step dependencies and conditional paths
+- Steps without dependencies run concurrently
+- Three failure strategies: `:halt`, `:continue`, `:ignore` (pipeline-level and per-step)
+- Pipeline chaining with serial chains, fan-out, fan-in, and parallel start
+- `on_complete`, `on_success`, `on_failure` lifecycle callbacks with exactly-once dispatch
+- Mountable Rails engine with execution list, DAG visualization, and definitions catalog
+- Automatic cleanup that piggybacks on GoodJob's cleanup cycle
+- Postgres-only: no Redis, atomic enqueue transactions
 
 ## Requirements
 

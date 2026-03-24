@@ -1,6 +1,6 @@
 # Conditional Branching
 
-GoodPipeline supports conditional branching — taking different paths at runtime based on application state. Branches are rendered as diamond decision nodes in the dashboard.
+Conditional branching lets a pipeline take different paths at runtime based on application state. The dashboard renders branches as diamond decision nodes.
 
 ## Defining a branch
 
