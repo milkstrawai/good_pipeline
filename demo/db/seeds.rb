@@ -154,7 +154,7 @@ ingest2_steps = add_steps(ingest2,
 add_edges(ingest2, ingest2_steps, %w[extract validate], %w[validate transform], %w[transform load])
 
 # 11. MediaProcessingPipeline (succeeded, HD path taken) — single branch
-branch_job = GoodPipeline::Pipeline::BRANCH_JOB_CLASS
+branch_job = GoodPipeline::BRANCH_JOB_CLASS
 media = create_pipeline(type: "MediaProcessingPipeline", status: "succeeded",
                          params: { media_id: 4421, source: "upload" }, age: 1.hour, duration: 20.minutes)
 media_steps = add_steps(media,

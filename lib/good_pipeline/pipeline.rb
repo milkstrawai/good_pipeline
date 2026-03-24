@@ -1,8 +1,9 @@
 # frozen_string_literal: true
 
 module GoodPipeline
+  BRANCH_JOB_CLASS = "GoodPipeline::Branch"
+
   class Pipeline # rubocop:disable Metrics/ClassLength
-    BRANCH_JOB_CLASS = "GoodPipeline::Branch"
     VALID_FAILURE_STRATEGIES = %i[halt continue ignore].freeze
     DSL_ATTRIBUTES = %i[description failure_strategy on_complete on_success on_failure].freeze
 

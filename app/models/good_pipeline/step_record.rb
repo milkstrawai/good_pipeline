@@ -49,7 +49,7 @@ module GoodPipeline
              through: :downstream_dependencies,
              source: :step
 
-    def branch_step? = job_class == GoodPipeline::Pipeline::BRANCH_JOB_CLASS
+    def branch_step? = job_class == GoodPipeline::BRANCH_JOB_CLASS
     def branch_arm_step? = branch_arm.present?
 
     def duration

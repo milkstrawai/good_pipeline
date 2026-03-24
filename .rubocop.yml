@@ -42,6 +42,9 @@ Metrics/ClassLength:
 Metrics/ParameterLists:
   CountKeywordArgs: false
 
+Naming/RescuedExceptionsVariableName:
+  PreferredName: error
+
 Style/StringLiterals:
   EnforcedStyle: double_quotes
 

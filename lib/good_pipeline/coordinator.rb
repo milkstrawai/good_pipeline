@@ -22,8 +22,8 @@ module GoodPipeline
           return if locked_step.good_job_id.present?
 
           skipped_downstream_ids = resolve_step(locked_step)
-        rescue ConfigurationError => e
-          fail_step_with_error(locked_step, e)
+        rescue ConfigurationError => error
+          fail_step_with_error(locked_step, error)
           propagate_halt(locked_step) if locked_step.pipeline.halt?
           skipped_downstream_ids = locked_step.downstream_steps.pluck(:id)
           recompute_pipeline = locked_step.pipeline
@@ -96,9 +96,9 @@ module GoodPipeline
           locked_step.transition_coordination_status_to!(:skipped)
           locked_step.downstream_steps.pluck(:id)
         elsif locked_step.branch_step? && all_upstreams_satisfied?(locked_step)
-          resolve_branch_step(locked_step)
+          BranchResolver.resolve(locked_step)
           locked_step.downstream_steps.pluck(:id)
-        elsif should_skip_by_branch?(locked_step)
+        elsif BranchResolver.skipped_by_branch?(locked_step)
           locked_step.transition_coordination_status_to!(:skipped_by_branch)
           locked_step.downstream_steps.pluck(:id)
         else
@@ -141,7 +141,7 @@ module GoodPipeline
         step.upstream_steps.all? do |upstream|
           upstream.succeeded? ||
             upstream.skipped_by_branch? ||
-            (upstream.failed? && effective_strategy(upstream) == :ignore)
+            (upstream.failed? && effective_failure_strategy(upstream) == :ignore)
         end
       end
 
@@ -150,56 +150,15 @@ module GoodPipeline
           step.upstream_steps.any? { |upstream| permanently_unsatisfied?(upstream) }
       end
 
-      def resolve_branch_step(step) # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
-        pipeline_class = step.pipeline.type.constantize
-        decides_method = step.decides.to_sym
-
-        unless pipeline_class.method_defined?(decides_method) ||
-               pipeline_class.private_method_defined?(decides_method)
-          raise ConfigurationError, "Pipeline #{step.pipeline.type} does not define decision method :#{decides_method}"
-        end
-
-        instance = pipeline_class.reconstruct(step.pipeline)
-        result = instance.send(decides_method).to_s
-
-        validate_branch_result!(step, result)
-
-        step.update_column(:branch, step.branch.merge("branch_result" => result))
-        step.transition_coordination_status_to!(:succeeded)
-      end
-
-      def validate_branch_result!(step, result) # rubocop:disable Metrics/AbcSize
-        declared_arms = step.pipeline.steps
-                            .select { |pipeline_step| pipeline_step.branch_key == step.key.to_s }
-                            .filter_map(&:branch_arm)
-                            .uniq
-        declared_arms.concat(Array(step.empty_arms))
-
-        return if declared_arms.include?(result)
-
-        raise ConfigurationError,
-              "branch :#{step.key} decision returned \"#{result}\", " \
-              "but only #{declared_arms.map { |arm| ":#{arm}" }.join(", ")} are declared"
-      end
-
-      def should_skip_by_branch?(step)
-        return false unless step.branch_arm_step?
-
-        branch_step = step.pipeline.steps.find_by(key: step.branch_key)
-        return false unless branch_step&.branch_result
-
-        branch_step.branch_result != step.branch_arm
-      end
-
       def permanently_unsatisfied?(upstream)
         upstream.terminal_coordination_status? &&
           !upstream.succeeded? &&
           !upstream.skipped_by_branch? &&
-          effective_strategy(upstream) != :ignore
+          effective_failure_strategy(upstream) != :ignore
       end
 
       def skip_all_pending_steps(pipeline, except_dependents_of:)
-        exempt_step_ids = if effective_strategy(except_dependents_of) == :ignore
+        exempt_step_ids = if effective_failure_strategy(except_dependents_of) == :ignore
                             transitive_downstream_ids(except_dependents_of)
                           else
                             Set.new
@@ -232,7 +191,7 @@ module GoodPipeline
         )
       end
 
-      def effective_strategy(step)
+      def effective_failure_strategy(step)
         step.on_failure_strategy&.to_sym || step.pipeline.on_failure_strategy.to_sym
       end
     end

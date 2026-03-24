@@ -76,7 +76,7 @@ class TestBranchExecution < ActiveSupport::TestCase
     branch_step = pipeline.steps.find_by(key: "format_check")
 
     assert_predicate branch_step, :branch_step?
-    assert_equal GoodPipeline::Pipeline::BRANCH_JOB_CLASS, branch_step.job_class
+    assert_equal GoodPipeline::BRANCH_JOB_CLASS, branch_step.job_class
     assert_equal "pick_format", branch_step.decides
   end
 

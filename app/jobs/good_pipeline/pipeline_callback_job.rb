@@ -34,8 +34,8 @@ module GoodPipeline
       return unless callback
 
       pipeline.send(callback)
-    rescue StandardError => e
-      errors << e
+    rescue StandardError => error
+      errors << error
     end
 
     def raise_callback_errors(errors)
@@ -44,7 +44,7 @@ module GoodPipeline
       primary = errors.first
       if errors.size > 1
         suppressed = errors[1..].map { |error| "#{error.class}: #{error.message}" }.join("; ")
-        raise primary.class, "#{primary.message} (suppressed #{errors.size - 1} additional error(s): #{suppressed})"
+        raise primary, "#{primary.message} (suppressed #{errors.size - 1} additional error(s): #{suppressed})"
       end
       raise primary
     end

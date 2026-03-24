@@ -7,6 +7,7 @@ require "active_support/core_ext/object/blank"
 require "active_support/core_ext/time"
 require "active_support/core_ext/string/inflections"
 require "active_support/isolated_execution_state"
+require_relative "../../app/helpers/good_pipeline/mermaid_diagram_builder"
 require_relative "../../app/helpers/good_pipeline/pipelines_helper"
 
 class TestPipelinesHelper < Minitest::Test
@@ -39,7 +40,7 @@ class TestPipelinesHelper < Minitest::Test
   end
 
   FakeStep = Struct.new(:key, :coordination_status, :good_job_id, :job_class, :branch_arm, :id, :empty_arms) do
-    def branch_step? = job_class == GoodPipeline::Pipeline::BRANCH_JOB_CLASS
+    def branch_step? = job_class == GoodPipeline::BRANCH_JOB_CLASS
     def branch_arm_step? = branch_arm.present?
   end
   FakeDependency = Struct.new(:depends_on_step, :step, :step_id)
