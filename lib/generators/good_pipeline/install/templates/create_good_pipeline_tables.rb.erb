@@ -18,7 +18,7 @@ class CreateGoodPipelineTables < ActiveRecord::Migration[<%= ActiveRecord::Migra
     add_index :good_pipeline_pipelines, :status
 
     create_table :good_pipeline_steps, id: :uuid do |t|
-      t.references :pipeline, null: false, foreign_key: { to_table: :good_pipeline_pipelines }, type: :uuid
+      t.references :pipeline, null: false, foreign_key: { to_table: :good_pipeline_pipelines }, type: :uuid, index: false
       t.string :key, null: false
       t.string :job_class, null: false
       t.jsonb :params, null: false, default: {}
@@ -45,7 +45,7 @@ class CreateGoodPipelineTables < ActiveRecord::Migration[<%= ActiveRecord::Migra
     end
 
     create_table :good_pipeline_chains, id: :uuid do |t|
-      t.references :upstream_pipeline, null: false, foreign_key: { to_table: :good_pipeline_pipelines }, type: :uuid
+      t.references :upstream_pipeline, null: false, foreign_key: { to_table: :good_pipeline_pipelines }, type: :uuid, index: false
       t.references :downstream_pipeline, null: false, foreign_key: { to_table: :good_pipeline_pipelines }, type: :uuid
     end
 

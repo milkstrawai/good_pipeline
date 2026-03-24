@@ -27,7 +27,7 @@ module GoodPipeline
              class_name: "GoodPipeline::StepRecord",
              foreign_key: :pipeline_id,
              inverse_of: :pipeline,
-             dependent: :delete_all
+             dependent: :destroy
 
     has_many :dependencies,
              class_name: "GoodPipeline::DependencyRecord",
