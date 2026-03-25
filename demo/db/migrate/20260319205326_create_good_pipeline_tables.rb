@@ -30,6 +30,7 @@ class CreateGoodPipelineTables < ActiveRecord::Migration[8.1]
       t.jsonb :branch, null: false, default: {}
       t.uuid :good_job_batch_id
       t.uuid :good_job_id
+      t.integer :pending_upstream_count, null: false, default: 0
       t.integer :attempts
       t.string :error_class
       t.text :error_message

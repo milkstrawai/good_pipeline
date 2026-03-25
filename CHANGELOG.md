@@ -1,5 +1,34 @@
 ## [Unreleased]
 
+## [0.3.0] - 2026-03-25
+
+### Performance
+
+- **Bulk insert steps and dependencies** — `Runner` uses `insert_all!` with `RETURNING` for steps and dependencies instead of individual `create!` calls, reducing pipeline creation from N+M queries to 2.
+- **Pre-generated pipeline UUID** — `Runner` generates the pipeline UUID upfront, folding batch ID and initial status into a single INSERT instead of separate UPDATEs.
+- **Atomic upstream counter** — new `pending_upstream_count` column on steps tracks how many upstreams remain. `unblock_downstream_steps` atomically decrements via `UPDATE ... RETURNING` and only calls `try_enqueue_step` when the count reaches zero, eliminating O(N) wasted lock acquisitions for fan-in and diamond topologies.
+- **Merged UPDATE round-trips** — `enqueue_user_job` folds status transition, batch ID, and job ID into one `update_columns`. `record_step_failure` merges status and error metadata into one `update_columns`.
+- **Removed redundant transaction** — `record_step_outcome` no longer wraps a single `update_columns` in an explicit transaction.
+- **`update_columns` in transition methods** — `transition_coordination_status_to!` and `transition_to!` use `update_columns` instead of `update!`, skipping AR dirty tracking overhead.
+- **SQL EXISTS for status checks** — `recompute_pipeline_status` and `derive_terminal_status` use `EXISTS` queries instead of loading all step records.
+- **Pipeline load with EXISTS** — `load_pipeline_with_active_check` combines pipeline load with active-step and downstream-chain EXISTS checks in a single query.
+- **Conditional callback dispatch** — `dispatch_callbacks_once` uses `UPDATE WHERE callbacks_dispatched_at IS NULL` instead of `SELECT FOR UPDATE` + `UPDATE`.
+- **Early return on active pipeline** — `complete_step` skips pipeline status recomputation when `unblock_downstream_steps` enqueued any downstream step.
+- **Bulk skip on halt** — `skip_all_pending_steps` uses `update_all` instead of iterating with individual updates.
+- **Single-pass graph validation** — `GraphValidator` merges duplicate-key check, self-dependency check, steps-by-key index, and forward-edges construction into one O(n) pass and returns `steps_by_key` for reuse by `Pipeline`.
+- **Frozen constant defaults** — `EMPTY_HASH` and `EMPTY_ARRAY` shared constants avoid allocating fresh empty containers on every `StepDefinition` and `Pipeline#run` call.
+- **Fast-path shortcuts** — `validate_enqueue_options!` returns immediately for empty options. `expand_branch_aliases` skips `flat_map` when no branches are defined.
+
+### Added
+
+- **Benchmarking scripts** — `bench/memory_bench.rb` (in-memory, no DB) and `bench/database_bench.rb` (PostgreSQL) with `--json` flag for structured output. Covers pipeline construction, graph validation, cycle detection, step enqueue, step completion, status recomputation, halt propagation, and full pipeline run across linear, fan-out, fan-in, and diamond topologies.
+- **`pending_upstream_count` column** — integer column on steps table, set by `Runner` at creation time, decremented atomically by `Coordinator` on step completion.
+
+### Changed
+
+- **`Runner` refactored** — `call` method extracted into `create_pipeline_batch`, `create_pipeline_record`, `insert_steps`, `insert_dependencies`, and `enqueue_root_steps` for readability. Pipeline record is a local variable passed to methods instead of an instance variable.
+- **`Coordinator` method reordering** — private methods grouped by concern (outcome recording, downstream unblocking, step resolution, pipeline status) rather than call order.
+
 ## [0.2.2] - 2026-03-24
 
 ### Fixed

@@ -4,11 +4,29 @@ module GoodPipeline
   class StepDefinition
     SUPPORTED_ENQUEUE_OPTIONS = %i[queue priority wait good_job_labels good_job_notify].freeze
 
-    attr_reader :key, :job_class, :params, :dependencies, :failure_strategy, :enqueue_options,
-                :branch_key, :branch_arm, :decides, :empty_arms
+    attr_reader :key,
+                :job_class,
+                :params,
+                :dependencies,
+                :failure_strategy,
+                :enqueue_options,
+                :branch_key,
+                :branch_arm,
+                :decides,
+                :empty_arms
 
-    def initialize(key:, job_class:, params: {}, dependencies: [], failure_strategy: nil, enqueue_options: {}, # rubocop:disable Metrics/MethodLength
-                   branch_key: nil, branch_arm: nil, decides: nil, empty_arms: [])
+    def initialize( # rubocop:disable Metrics/MethodLength
+      key:,
+      job_class:,
+      params: EMPTY_HASH,
+      dependencies: EMPTY_ARRAY,
+      failure_strategy: nil,
+      enqueue_options: EMPTY_HASH,
+      branch_key: nil,
+      branch_arm: nil,
+      decides: nil,
+      empty_arms: EMPTY_ARRAY
+    )
       @key = key
       @job_class = job_class
       @params = params.freeze
@@ -37,6 +55,8 @@ module GoodPipeline
     end
 
     def validate_enqueue_options!(options)
+      return if options.empty?
+
       unsupported = options.keys.map(&:to_sym) - SUPPORTED_ENQUEUE_OPTIONS
       return if unsupported.empty?
 

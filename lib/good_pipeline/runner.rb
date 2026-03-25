@@ -10,61 +10,81 @@ module GoodPipeline
       @pipeline = pipeline_instance
     end
 
-    def call(start: true) # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength
+    def call(start: true) # rubocop:disable Metrics/MethodLength
+      pipeline_id = SecureRandom.uuid
       pipeline_record = nil
-      step_records = {}
+      step_id_by_key = {}
 
-      PipelineRecord.transaction do # rubocop:disable Metrics/BlockLength
-        pipeline_record = PipelineRecord.create!(
-          type: @pipeline.class.name,
-          params: @pipeline.params,
-          status: :pending,
-          on_failure_strategy: @pipeline.failure_strategy.to_s
-        )
-
-        # Two passes: create all step records first, then dependencies.
-        # Branch steps may appear after their dependents in step_definitions.
-        @pipeline.step_definitions.each do |step_definition|
-          step_records[step_definition.key] = StepRecord.create!(
-            pipeline: pipeline_record,
-            key: step_definition.key.to_s,
-            job_class: resolve_job_class(step_definition),
-            params: step_definition.params,
-            on_failure_strategy: step_definition.failure_strategy&.to_s,
-            enqueue_options: step_definition.enqueue_options,
-            branch: build_branch_hash(step_definition)
-          )
-        end
-
-        @pipeline.step_definitions.each do |step_definition| # rubocop:disable Style/CombinableLoops
-          step_definition.dependencies.each do |dependency_key|
-            DependencyRecord.create!(
-              pipeline: pipeline_record,
-              step: step_records[step_definition.key],
-              depends_on_step: step_records[dependency_key]
-            )
-          end
-        end
-
-        pipeline_batch = GoodJob::Batch.new
-        pipeline_batch.on_finish = "GoodPipeline::PipelineReconciliationJob"
-        pipeline_batch.properties = { pipeline_id: pipeline_record.id }
-        pipeline_batch.save
-        pipeline_record.update_column(:good_job_batch_id, pipeline_batch.id)
-
-        pipeline_record.transition_to!(:running) if start
+      PipelineRecord.transaction do
+        batch = create_pipeline_batch(pipeline_id)
+        pipeline_record = create_pipeline_record(pipeline_id, batch.id, start: start)
+        step_id_by_key = insert_steps(pipeline_record)
+        insert_dependencies(pipeline_record, step_id_by_key)
       end
 
-      if start
-        @pipeline.root_steps.each do |step_definition|
-          Coordinator.try_enqueue_step(step_records[step_definition.key].id)
-        end
-      end
+      enqueue_root_steps(step_id_by_key) if start
 
       pipeline_record
     end
 
     private
+
+    def create_pipeline_batch(pipeline_id)
+      batch = GoodJob::Batch.new
+      batch.on_finish = "GoodPipeline::PipelineReconciliationJob"
+      batch.properties = { pipeline_id: pipeline_id }
+      batch.save
+      batch
+    end
+
+    def create_pipeline_record(pipeline_id, batch_id, start:)
+      PipelineRecord.create!(
+        id: pipeline_id,
+        type: @pipeline.class.name,
+        params: @pipeline.params,
+        status: start ? :running : :pending,
+        on_failure_strategy: @pipeline.failure_strategy.to_s,
+        good_job_batch_id: batch_id
+      )
+    end
+
+    def insert_steps(pipeline_record) # rubocop:disable Metrics/AbcSize,Metrics/MethodLength
+      step_rows = @pipeline.step_definitions.map do |step_definition|
+        {
+          pipeline_id: pipeline_record.id,
+          key: step_definition.key.to_s,
+          job_class: resolve_job_class(step_definition),
+          params: step_definition.params,
+          on_failure_strategy: step_definition.failure_strategy&.to_s,
+          enqueue_options: step_definition.enqueue_options,
+          branch: build_branch_hash(step_definition),
+          pending_upstream_count: step_definition.dependencies.size
+        }
+      end
+
+      result = StepRecord.insert_all!(step_rows, returning: %w[id key])
+      result.rows.each_with_object({}) { |(id, key), hash| hash[key.to_sym] = id }
+    end
+
+    def insert_dependencies(pipeline_record, step_id_by_key)
+      dependency_rows = @pipeline.step_definitions.flat_map do |step_definition|
+        step_definition.dependencies.map do |dependency_key|
+          {
+            pipeline_id: pipeline_record.id,
+            step_id: step_id_by_key[step_definition.key],
+            depends_on_step_id: step_id_by_key[dependency_key]
+          }
+        end
+      end
+
+      DependencyRecord.insert_all!(dependency_rows) if dependency_rows.any?
+    end
+
+    def enqueue_root_steps(step_id_by_key)
+      @pipeline.root_steps.each do |step_definition|
+        Coordinator.try_enqueue_step(step_id_by_key[step_definition.key])
+      end
+    end
 
     def resolve_job_class(step_definition)
       step_definition.job_class.is_a?(String) ? step_definition.job_class : step_definition.job_class.name

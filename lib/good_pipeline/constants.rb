@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
 module GoodPipeline
-  VERSION = "0.3.0"
+  EMPTY_HASH  = {}.freeze
+  EMPTY_ARRAY = [].freeze
 end

@@ -12,11 +12,10 @@ module GoodPipeline
 
     def validate!
       check_empty_pipeline!
-      check_duplicate_keys!
-      build_steps_by_key!
-      check_self_dependencies!
+      build_index!
       check_unknown_references!
       check_cycles!
+      @steps_by_key
     end
 
     private
@@ -25,22 +24,20 @@ module GoodPipeline
       raise InvalidPipelineError, "pipeline has no steps" if @step_definitions.empty?
     end
 
-    def check_duplicate_keys!
-      seen = {}
+    def build_index! # rubocop:disable Metrics/AbcSize
+      @steps_by_key = {}
+      @forward_edges = Hash.new { |h, k| h[k] = [] }
+
       @step_definitions.each do |step|
-        raise InvalidPipelineError, "duplicate step key :#{step.key}" if seen.key?(step.key)
+        raise InvalidPipelineError, "duplicate step key :#{step.key}" if @steps_by_key.key?(step.key)
 
-        seen[step.key] = true
-      end
-    end
+        step.dependencies.each do |dependency_key|
+          raise InvalidPipelineError, "step :#{step.key} depends on itself" if dependency_key == step.key
 
-    def build_steps_by_key!
-      @steps_by_key = @step_definitions.to_h { |step| [step.key, step] }
-    end
+          @forward_edges[dependency_key] << step.key
+        end
 
-    def check_self_dependencies!
-      @steps_by_key.each_value do |step|
-        raise InvalidPipelineError, "step :#{step.key} depends on itself" if step.dependencies.include?(step.key)
+        @steps_by_key[step.key] = step
       end
     end
 
@@ -55,17 +52,7 @@ module GoodPipeline
     end
 
     def check_cycles!
-      CycleDetector.check!(@steps_by_key, build_forward_edges)
-    end
-
-    def build_forward_edges
-      edges = Hash.new { |h, k| h[k] = [] }
-      @steps_by_key.each_value do |step|
-        step.dependencies.each do |dependency_key|
-          edges[dependency_key] << step.key
-        end
-      end
-      edges
+      CycleDetector.check!(@steps_by_key, @forward_edges)
     end
   end
 end

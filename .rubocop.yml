@@ -32,6 +32,8 @@ Metrics/AbcSize:
     - "test/**/*"
 
 Metrics/MethodLength:
+  CountAsOne:
+    - heredoc
   Exclude:
     - "test/**/*"
 

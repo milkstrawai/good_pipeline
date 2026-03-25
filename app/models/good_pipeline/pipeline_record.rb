@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
 module GoodPipeline
+  # This model intentionally has no AR callbacks or validations. Status transitions
+  # use update_columns throughout the coordinator layer. If you need lifecycle hooks,
+  # ensure all update_columns call sites are updated accordingly.
   class PipelineRecord < ActiveRecord::Base
     self.table_name = "good_pipeline_pipelines"
     self.inheritance_column = nil
@@ -67,7 +70,7 @@ module GoodPipeline
         raise InvalidTransition, "cannot transition pipeline from '#{status}' to '#{new_status}'"
       end
 
-      update!(status: new_status)
+      update_columns(status: new_status, updated_at: Time.current)
     end
   end
 end

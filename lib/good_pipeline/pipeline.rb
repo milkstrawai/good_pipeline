@@ -103,11 +103,10 @@ module GoodPipeline
       @branch_context_stack = []
       @building = true
       configure(**kwargs)
-      GraphValidator.validate!(@step_definitions)
+      @steps_by_key = GraphValidator.validate!(@step_definitions).freeze
       @step_definitions.freeze
       @branch_aliases.freeze
       @building = false
-      @steps_by_key = @step_definitions.to_h { |step| [step.key, step] }.freeze
       @root_steps = @step_definitions.select { |step| step.dependencies.empty? }.freeze
       freeze
     end
@@ -118,7 +117,7 @@ module GoodPipeline
       raise NotImplementedError, "#{self.class} must implement #configure"
     end
 
-    def run(key, job_class, with: {}, after: [], on_failure: nil, enqueue: {}) # rubocop:disable Metrics/MethodLength
+    def run(key, job_class, with: EMPTY_HASH, after: EMPTY_ARRAY, on_failure: nil, enqueue: EMPTY_HASH) # rubocop:disable Metrics/MethodLength
       raise ConfigurationError, "run can only be called inside configure" unless @building
 
       expanded_after = expand_branch_aliases(after)
@@ -186,6 +185,8 @@ module GoodPipeline
     # NOTE: Single-level expansion only. If nested branches are added in the future,
     # this must become recursive to expand inner branch aliases.
     def expand_branch_aliases(dependencies)
+      return Array(dependencies) if @branch_aliases.empty?
+
       Array(dependencies).flat_map { |dependency| @branch_aliases.fetch(dependency, [dependency]) }
     end
   end

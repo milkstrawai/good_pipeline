@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
 module GoodPipeline
+  # This model intentionally has no AR callbacks or validations. Status transitions
+  # use update_columns throughout the coordinator layer. If you need lifecycle hooks,
+  # ensure all update_columns call sites are updated accordingly.
   class StepRecord < ActiveRecord::Base
     self.table_name = "good_pipeline_steps"
 
@@ -74,7 +77,7 @@ module GoodPipeline
               "cannot transition step '#{key}' coordination_status from '#{coordination_status}' to '#{new_status}'"
       end
 
-      update!(coordination_status: new_status)
+      update_columns(coordination_status: new_status, updated_at: Time.current)
     end
   end
 end

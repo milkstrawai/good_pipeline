@@ -65,6 +65,7 @@ module ActiveSupport
       dependencies.each do |dependency_step|
         GoodPipeline::DependencyRecord.create!(pipeline: pipeline, step: step, depends_on_step: dependency_step)
       end
+      step.update_column(:pending_upstream_count, dependencies.size)
       step
     end
   end
