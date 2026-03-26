@@ -13,6 +13,12 @@ module GoodPipeline
       end
     end
 
+    initializer "good_pipeline.haltable" do
+      ActiveSupport.on_load(:active_job) do
+        include GoodPipeline::Haltable
+      end
+    end
+
     initializer "good_pipeline.cleanup_hook" do
       ActiveSupport::Notifications.subscribe("cleanup_preserved_jobs.good_job") do |event|
         timestamp = event.payload[:timestamp]

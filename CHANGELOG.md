@@ -1,5 +1,14 @@
 ## [Unreleased]
 
+## [0.3.1] - 2026-03-26
+
+### Added
+
+- **`halt_pipeline!`** — call from any job to stop the pipeline early with a `succeeded` status. The halting step is marked `halted`, remaining pending steps are `skipped`, and the `on_success` callback fires. The GoodJob record completes as succeeded (no error, no discard). Available in all jobs via `GoodPipeline::Haltable`, included automatically by the Engine.
+- **`halted` coordination status** — new terminal step status for steps that called `halt_pipeline!`. Treated as satisfied for downstream dependency resolution.
+- **`halt_requested` column** — boolean column on steps table, set by `halt_pipeline!` and checked by the coordinator on step completion.
+- **`good_job_id` index** — partial unique index on `good_job_id` for fast step lookup from within jobs.
+
 ## [0.3.0] - 2026-03-25
 
 ### Performance

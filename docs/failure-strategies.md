@@ -127,6 +127,41 @@ A downstream step is eligible for enqueue when **all** of its incoming edges are
 
 A downstream step is marked `skipped` when it's still `pending` and at least one incoming edge is **permanently unsatisfied** — the upstream is terminal, cannot satisfy the edge, and no future event can change that.
 
+## Early termination with success
+
+Sometimes a job determines there is nothing to do — the account is deactivated, the resource was already processed, etc. Call `halt_pipeline!` to stop the pipeline early and mark it as `succeeded`:
+
+```ruby
+class FetchDataJob < ApplicationJob
+  def perform(account_id:)
+    account = Account.find(account_id)
+    return halt_pipeline! if account.deactivated?
+
+    # ... normal work
+  end
+end
+```
+
+The behavior:
+
+| Aspect | Value |
+|---|---|
+| Halting step status | `halted` |
+| Remaining pending steps | `skipped` |
+| Pipeline status | `succeeded` |
+| Callback triggered | `on_success` |
+| GoodJob record | Succeeded (no error, no discard) |
+
+No configuration or module includes are required. The Engine includes `GoodPipeline::Haltable` into `ActiveJob::Base` at boot, so `halt_pipeline!` is available in any job. For non-pipeline jobs, it's a no-op.
+
+::: tip Return early
+Remember to use `return halt_pipeline!` — without `return`, the job continues executing after the call.
+:::
+
+::: warning Parallel steps
+If another step is already running when `halt_pipeline!` is called, that step continues to completion. Only `pending` steps are skipped. If the running step fails, the pipeline will derive to `failed`, not `succeeded`.
+:::
+
 ## Failure resolution table
 
 | Pipeline strategy | Step override | Effect when step fails |

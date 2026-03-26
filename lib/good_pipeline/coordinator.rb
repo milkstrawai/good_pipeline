@@ -3,8 +3,13 @@
 module GoodPipeline
   class Coordinator # rubocop:disable Metrics/ClassLength
     class << self
-      def complete_step(step, succeeded:)
+      def complete_step(step, succeeded:) # rubocop:disable Metrics/MethodLength
         return if step.terminal_coordination_status?
+
+        if succeeded && step.halt_requested?
+          handle_halt_execution(step)
+          return
+        end
 
         record_step_outcome(step, succeeded)
         propagate_halt(step) if !succeeded && step.pipeline.halt?
@@ -73,6 +78,19 @@ module GoodPipeline
       end
 
       private
+
+      def handle_halt_execution(step)
+        step.transition_coordination_status_to!(:halted)
+        step.pipeline.steps.pending.update_all(coordination_status: "skipped")
+
+        pipeline = load_pipeline_with_active_check(step.pipeline_id)
+
+        recompute_pipeline_status(
+          pipeline,
+          has_active_steps: pipeline["has_active_steps"],
+          has_downstream_chains: pipeline["has_downstream_chains"]
+        )
+      end
 
       def record_step_outcome(step, succeeded)
         if succeeded
@@ -173,6 +191,7 @@ module GoodPipeline
       def permanently_unsatisfied?(upstream)
         upstream.terminal_coordination_status? &&
           !upstream.succeeded? &&
+          !upstream.halted? &&
           !upstream.skipped_by_branch? &&
           effective_failure_strategy(upstream) != :ignore
       end
@@ -186,6 +205,7 @@ module GoodPipeline
       def all_upstreams_satisfied?(step)
         step.upstream_steps.all? do |upstream|
           upstream.succeeded? ||
+            upstream.halted? ||
             upstream.skipped_by_branch? ||
             (upstream.failed? && effective_failure_strategy(upstream) == :ignore)
         end

@@ -13,6 +13,7 @@ require_relative "good_pipeline/branch_resolver"
 require_relative "good_pipeline/coordinator"
 require_relative "good_pipeline/chain_coordinator"
 require_relative "good_pipeline/runner"
+require_relative "good_pipeline/haltable"
 require_relative "good_pipeline/chain"
 require_relative "good_pipeline/engine" if defined?(Rails::Engine)
 

@@ -31,6 +31,7 @@ class CreateGoodPipelineTables < ActiveRecord::Migration[8.1]
       t.uuid :good_job_batch_id
       t.uuid :good_job_id
       t.integer :pending_upstream_count, null: false, default: 0
+      t.boolean :halt_requested, null: false, default: false
       t.integer :attempts
       t.string :error_class
       t.text :error_message
@@ -40,6 +41,7 @@ class CreateGoodPipelineTables < ActiveRecord::Migration[8.1]
 
     add_index :good_pipeline_steps, %i[pipeline_id key], unique: true
     add_index :good_pipeline_steps, :coordination_status
+    add_index :good_pipeline_steps, :good_job_id, unique: true, where: "good_job_id IS NOT NULL"
 
     create_table :good_pipeline_dependencies do |t|
       t.references :pipeline, null: false, foreign_key: { to_table: :good_pipeline_pipelines }, type: :uuid

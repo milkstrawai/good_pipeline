@@ -15,6 +15,7 @@ module GoodPipeline
       "  classDef failed fill:#f44336,color:#fff",
       "  classDef skipped fill:#bdbdbd,color:#333",
       "  classDef skipped_by_branch fill:#bdbdbd,color:#333",
+      "  classDef halted fill:#8bc34a,color:#fff",
       "  classDef branch fill:#ff9800,color:#fff,stroke:#f57c00",
       "  classDef terminal fill:#1a1a2e,color:#fff,stroke:#1a1a2e"
     ].freeze
