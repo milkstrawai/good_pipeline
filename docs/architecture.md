@@ -180,3 +180,11 @@ This ensures a step is never prematurely marked `failed` on attempt 1 of 5.
 7. Separate atomic units per transaction boundary to minimize lock contention
 8. DAG validation runs at instantiation, before any database writes
 9. `failure_strategy` and `on_failure` are distinct concepts -- strategy vs. callback, no naming collision
+
+## Why these tradeoffs
+
+GoodPipeline is intentionally GoodJob-specific and Postgres-only. This is what enables atomic enqueue transactions — step status transitions and GoodJob record inserts happen in a single database transaction, eliminating an entire class of partial-state bugs that adapter-agnostic gems must work around.
+
+The DAG execution model (vs. strictly sequential steps) adds coordination complexity — row locks, atomic counters, fan-in race prevention — but unlocks parallel execution of independent steps. For workflows where steps have no dependency on each other, this means wall-clock time is bounded by the longest path through the graph, not the sum of all steps.
+
+The four-table data model (pipelines, steps, dependencies, chains) is more tables than a two-table approach, but dedicated dependency and chain tables enable efficient graph queries and keep the step table free of self-referential joins.

@@ -2,6 +2,8 @@
 
 Conditional branching lets a pipeline take different paths at runtime based on application state. The dashboard renders branches as diamond decision nodes.
 
+Runtime branching with `branch` blocks is uncommon among Ruby workflow gems — most offer only `skip_if` conditions on individual steps. GoodPipeline's branching evaluates a decision method when the branch is reached, runs the matching arm, marks non-matching arms as `skipped_by_branch`, and lets downstream steps wait on whichever arm was chosen.
+
 ## Defining a branch
 
 Use `branch` inside `configure` to define a decision point. The `by:` option names a method on your pipeline class that returns the arm to execute:

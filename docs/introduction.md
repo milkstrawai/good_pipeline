@@ -23,6 +23,24 @@ GoodJob's Batch feature fires a single `on_finish` callback when all jobs in a b
 
 GoodPipeline adds a coordination state machine, DAG validation, and atomic step transitions on top of Batch.
 
+### vs. Active Job Continuation (Rails 8.1)
+
+Rails 8.1 ships with `ActiveJob::Continuable`, which lets a single job define sequential steps with cursor-based progress tracking. If a deploy kills the process, the job resumes from its last checkpoint instead of restarting from scratch.
+
+This solves a different problem than GoodPipeline. Continuation makes one long-running job resilient to interruption. GoodPipeline orchestrates multiple independent jobs as a DAG with parallel execution, fan-out/fan-in, branching, and pipeline-level failure strategies.
+
+The two are complementary: a GoodPipeline step that processes millions of records could use `Continuable` internally for checkpoint/resume, while GoodPipeline handles the higher-level orchestration around it.
+
+### vs. Geneva Drive
+
+[Geneva Drive](https://github.com/julik/geneva_drive) is a durable workflow framework that executes steps strictly sequentially — one step at a time, like the mechanical gear it's named after. It works with any ActiveJob adapter (Sidekiq, Solid Queue, GoodJob) and supports PostgreSQL, MySQL, and SQLite.
+
+Geneva Drive is a strong choice for linear, long-lived workflows with pause/resume with human-in-the-loop recovery and per-hero workflow uniqueness constraints. Its layered exception policy system is particularly sophisticated.
+
+GoodPipeline takes a different approach: workflows are DAGs, not linear chains. Independent steps run in parallel across workers. Fan-out, fan-in, conditional branching, and pipeline chaining are first-class primitives. The tradeoff is that GoodPipeline requires GoodJob and PostgreSQL specifically, while Geneva Drive is adapter- and database-agnostic.
+
+Choose Geneva Drive when your workflow is inherently sequential and you need pause/resume or adapter flexibility. Choose GoodPipeline when steps can run concurrently, your workflow has branching or fan-in topology, or you want a built-in dashboard with DAG visualization.
+
 ## Features
 
 - `run` and `branch` DSL for defining step dependencies and conditional paths

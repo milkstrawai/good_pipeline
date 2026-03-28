@@ -79,6 +79,8 @@ GoodPipeline.run(
 
 Both pipelines start immediately. `MergeMediaPipeline` waits for both to succeed.
 
+Pipeline chaining is a first-class primitive — upstream/downstream relationships are tracked in a dedicated database table with atomic state propagation, rather than manually creating the next workflow in the last step of the current one.
+
 ## How `.then` works internally
 
 `.then` returns a `GoodPipeline::Chain` object which:

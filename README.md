@@ -2,7 +2,7 @@
 
 DAG-based job pipeline orchestration for Rails, built on [GoodJob](https://github.com/bensheldon/good_job).
 
-Define multi-step workflows as directed acyclic graphs, where each step is a GoodJob job. GoodPipeline handles dependency resolution, parallel execution, failure strategies, pipeline chaining, and lifecycle callbacks. It also ships with a web dashboard.
+Define multi-step workflows as directed acyclic graphs — not linear chains. Steps run in parallel when they can and wait for dependencies when they must. GoodPipeline handles dependency resolution, parallel execution, failure strategies, conditional branching, pipeline chaining, and lifecycle callbacks. It also ships with a web dashboard.
 
 ## Requirements
 
