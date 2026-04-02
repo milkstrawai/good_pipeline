@@ -46,6 +46,8 @@ Note: `on_failure` does **not** fire for `skipped` pipelines. Being skipped by a
 
 Callbacks are dispatched via `PipelineCallbackJob`, a GoodJob job enqueued after the terminal state transaction commits. A slow external call (Slack, webhooks) cannot stall the coordinator, callback execution cannot corrupt pipeline state, and callbacks get GoodJob's retry mechanism if they fail.
 
+`PipelineCallbackJob` runs on the queue configured by `callback_queue_name` (default: `"good_pipeline_callbacks"`). This is separate from `coordination_queue_name` which controls the coordination jobs (`StepFinishedJob`, `PipelineReconciliationJob`), so slow callbacks don't block pipeline progression. See [Defining Pipelines](/defining-pipelines) for configuration options.
+
 ## Exactly-once guarantee
 
 The callback bundle (`on_complete` + one of `on_success`/`on_failure`) is dispatched as a **single unit**. A `callbacks_dispatched_at` timestamp is set atomically inside a `FOR UPDATE` locked transaction, ensuring the bundle fires exactly once even if `recompute_pipeline_status` is called from multiple code paths (coordinator or batch reconciliation).

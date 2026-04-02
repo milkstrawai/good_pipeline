@@ -5,7 +5,16 @@ module GoodPipeline
 
   class Pipeline # rubocop:disable Metrics/ClassLength
     VALID_FAILURE_STRATEGIES = %i[halt continue ignore].freeze
-    DSL_ATTRIBUTES = %i[display_name description failure_strategy on_complete on_success on_failure].freeze
+    DSL_ATTRIBUTES = %i[
+      display_name
+      description
+      failure_strategy
+      on_complete
+      on_success
+      on_failure
+      coordination_queue_name
+      callback_queue_name
+    ].freeze
 
     # --- Class-level DSL ---
 
@@ -58,6 +67,18 @@ module GoodPipeline
         @on_failure = method_name
       end
 
+      def coordination_queue_name(name = :__unset__)
+        return @coordination_queue_name || GoodPipeline.coordination_queue_name if name == :__unset__
+
+        @coordination_queue_name = name
+      end
+
+      def callback_queue_name(name = :__unset__)
+        return @callback_queue_name || GoodPipeline.callback_queue_name if name == :__unset__
+
+        @callback_queue_name = name
+      end
+
       alias build new
 
       def run(**)
@@ -95,6 +116,8 @@ module GoodPipeline
     def on_complete_callback = self.class.on_complete
     def on_success_callback = self.class.on_success
     def on_failure_callback = self.class.on_failure
+    def coordination_queue_name = self.class.coordination_queue_name
+    def callback_queue_name = self.class.callback_queue_name
 
     def initialize(**kwargs) # rubocop:disable Metrics/MethodLength
       @params = kwargs.freeze

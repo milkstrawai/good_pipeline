@@ -18,6 +18,21 @@ require_relative "good_pipeline/chain"
 require_relative "good_pipeline/engine" if defined?(Rails::Engine)
 
 module GoodPipeline
+  DEFAULT_COORDINATION_QUEUE_NAME = "good_pipeline_coordination"
+  DEFAULT_CALLBACK_QUEUE_NAME = "good_pipeline_callbacks"
+
+  class << self
+    attr_writer :coordination_queue_name, :callback_queue_name
+
+    def coordination_queue_name
+      @coordination_queue_name || DEFAULT_COORDINATION_QUEUE_NAME
+    end
+
+    def callback_queue_name
+      @callback_queue_name || DEFAULT_CALLBACK_QUEUE_NAME
+    end
+  end
+
   def self.run(*pipeline_configs)
     pipeline_records = pipeline_configs.map do |config|
       pipeline_class, pipeline_params = extract_pipeline_config(config)

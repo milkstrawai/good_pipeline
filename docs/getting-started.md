@@ -36,6 +36,18 @@ GoodJob.preserve_job_records = true
 
 GoodPipeline will raise `GoodPipeline::ConfigurationError` at boot if this is not set.
 
+## Configure queue names (optional)
+
+GoodPipeline routes its internal jobs to dedicated queues by default. You can override them globally:
+
+```ruby
+# config/initializers/good_pipeline.rb
+GoodPipeline.coordination_queue_name = "pipeline_coordination"  # StepFinishedJob, PipelineReconciliationJob
+GoodPipeline.callback_queue_name = "pipeline_callbacks"         # PipelineCallbackJob
+```
+
+Defaults are `"good_pipeline_coordination"` and `"good_pipeline_callbacks"`. Per-pipeline overrides are also available via the class DSL — see [Defining Pipelines](/defining-pipelines).
+
 ## Mount the dashboard (optional)
 
 ```ruby

@@ -8,6 +8,8 @@ Every pipeline is a subclass of `GoodPipeline::Pipeline` that implements `config
 class VideoProcessingPipeline < GoodPipeline::Pipeline
   description "Downloads, transcodes and publishes a video"
   failure_strategy :halt
+  coordination_queue_name "video_coordination"
+  callback_queue_name "video_callbacks"
 
   on_complete :notify
   on_success  :celebrate
@@ -39,6 +41,8 @@ end
 | `on_complete` | Callback for any terminal state | `nil` |
 | `on_success` | Callback for succeeded | `nil` |
 | `on_failure` | Callback for failed or halted | `nil` |
+| `coordination_queue_name` | Queue for `StepFinishedJob` and `PipelineReconciliationJob` | `"good_pipeline_coordination"` |
+| `callback_queue_name` | Queue for `PipelineCallbackJob` | `"good_pipeline_callbacks"` |
 
 ## DSL verbs
 

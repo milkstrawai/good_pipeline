@@ -90,7 +90,8 @@ module GoodPipeline
 
           return if rows_updated.zero?
 
-          PipelineCallbackJob.perform_later(pipeline.id, new_status.to_s)
+          queue = pipeline.type.constantize.callback_queue_name
+          PipelineCallbackJob.set(queue: queue).perform_later(pipeline.id, new_status.to_s)
         end
       end
 
@@ -255,6 +256,7 @@ module GoodPipeline
       def build_step_batch(step)
         batch = GoodJob::Batch.new
         batch.on_finish = "GoodPipeline::StepFinishedJob"
+        batch.callback_queue_name = step.pipeline.type.constantize.coordination_queue_name
         batch.properties = { step_id: step.id }
         batch
       end
@@ -286,6 +288,7 @@ module GoodPipeline
         batch_job_pairs = []
         step_metadata = {}
         failed_steps = []
+        coordination_queue = steps.first.pipeline.type.constantize.coordination_queue_name
 
         steps.each do |step|
           job_class = begin
@@ -297,6 +300,7 @@ module GoodPipeline
 
           batch = GoodJob::Batch.new
           batch.on_finish = "GoodPipeline::StepFinishedJob"
+          batch.callback_queue_name = coordination_queue
           batch.properties = { step_id: step.id }
 
           active_job = job_class.new(**step.params.symbolize_keys)

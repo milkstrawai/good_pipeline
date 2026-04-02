@@ -32,6 +32,7 @@ module GoodPipeline
     def create_pipeline_batch(pipeline_id)
       batch = GoodJob::Batch.new
       batch.on_finish = "GoodPipeline::PipelineReconciliationJob"
+      batch.callback_queue_name = @pipeline.coordination_queue_name
       batch.properties = { pipeline_id: pipeline_id }
       batch.save
       batch
