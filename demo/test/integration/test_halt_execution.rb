@@ -3,19 +3,6 @@
 require "test_helper"
 
 class TestHaltExecution < ActiveSupport::TestCase
-  def run_pipeline_to_completion(pipeline_record, timeout: 15)
-    deadline = Time.current + timeout
-    loop do
-      perform_enqueued_jobs_inline
-      pipeline_record.reload
-      return pipeline_record if pipeline_record.terminal?
-
-      raise "Pipeline did not reach terminal state within #{timeout}s (status: #{pipeline_record.status})" if Time.current > deadline
-
-      sleep 0.05
-    end
-  end
-
   def test_halt_pipeline_marks_step_halted
     pipeline_class = Class.new(GoodPipeline::Pipeline) do
       failure_strategy :halt

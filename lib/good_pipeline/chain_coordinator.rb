@@ -42,12 +42,8 @@ module GoodPipeline
 
       def start_pipeline(pipeline_record)
         pipeline_record.transition_to!(:running)
-
         root_step_ids = pipeline_record.steps.where.missing(:upstream_dependencies).pluck(:id)
-
-        root_step_ids.each do |step_id|
-          Coordinator.try_enqueue_step(step_id)
-        end
+        Coordinator.bulk_enqueue_steps(root_step_ids)
       end
     end
   end

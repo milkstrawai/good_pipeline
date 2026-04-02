@@ -49,6 +49,23 @@ module GoodPipeline
         step_was_enqueued || downstream_enqueued
       end
 
+      # Enqueues multiple steps in bulk using Batch.enqueue_all.
+      # Intended for root steps during pipeline startup where no
+      # concurrent enqueue risk exists and no upstream checks are needed.
+      def bulk_enqueue_steps(step_ids)
+        return if step_ids.empty?
+
+        steps = StepRecord.where(id: step_ids, coordination_status: "pending")
+                          .where(good_job_id: nil)
+                          .to_a
+
+        branch_steps, enqueueable_steps = steps.partition(&:branch_step?)
+
+        bulk_enqueue_user_jobs(enqueueable_steps) if enqueueable_steps.any?
+
+        branch_steps.each { |step| try_enqueue_step(step.id) }
+      end
+
       def recompute_pipeline_status(pipeline, has_active_steps: nil, has_downstream_chains: nil) # rubocop:disable Metrics/MethodLength
         return if pipeline.terminal?
 
@@ -127,6 +144,18 @@ module GoodPipeline
         end
 
         scope.update_all(coordination_status: "skipped")
+      end
+
+      def transitive_downstream_ids(step)
+        visited = Set.new
+        queue = step.downstream_steps.pluck(:id)
+        while (current_id = queue.shift)
+          next if visited.include?(current_id)
+
+          visited << current_id
+          queue.concat(DependencyRecord.where(depends_on_step_id: current_id).pluck(:step_id))
+        end
+        visited
       end
 
       def unblock_downstream_steps(step)
@@ -236,6 +265,14 @@ module GoodPipeline
         enqueued_job.provider_job_id || enqueued_job.job_id
       end
 
+      def fail_step_with_error(step, error)
+        step.transition_coordination_status_to!(:failed)
+        step.update_columns(
+          error_class: error.class.name,
+          error_message: error.message
+        )
+      end
+
       def derive_terminal_status(pipeline)
         has_failures = pipeline.steps.where(coordination_status: "failed").exists?
 
@@ -245,24 +282,64 @@ module GoodPipeline
         :failed
       end
 
-      def transitive_downstream_ids(step)
-        visited = Set.new
-        queue = step.downstream_steps.pluck(:id)
-        while (current_id = queue.shift)
-          next if visited.include?(current_id)
+      def bulk_enqueue_user_jobs(steps) # rubocop:disable Metrics/AbcSize, Metrics/MethodLength,Metrics/CyclomaticComplexity
+        batch_job_pairs = []
+        step_metadata = {}
+        failed_steps = []
 
-          visited << current_id
-          queue.concat(DependencyRecord.where(depends_on_step_id: current_id).pluck(:step_id))
+        steps.each do |step|
+          job_class = begin
+            step.job_class.constantize
+          rescue NameError => error
+            failed_steps << [step, ConfigurationError.new(error.message)]
+            next
+          end
+
+          batch = GoodJob::Batch.new
+          batch.on_finish = "GoodPipeline::StepFinishedJob"
+          batch.properties = { step_id: step.id }
+
+          active_job = job_class.new(**step.params.symbolize_keys)
+          apply_enqueue_options(active_job, step.enqueue_options.symbolize_keys)
+
+          batch_job_pairs << [batch, [active_job]]
+          step_metadata[step.id] = { batch: batch, active_job: active_job }
         end
-        visited
+
+        StepRecord.transaction do
+          GoodJob::Batch.enqueue_all(batch_job_pairs) if batch_job_pairs.any?
+
+          now = Time.current
+          step_metadata.each do |step_id, metadata|
+            StepRecord.where(id: step_id).update_all(
+              coordination_status: "enqueued",
+              good_job_batch_id: metadata[:batch].id,
+              good_job_id: metadata[:active_job].provider_job_id || metadata[:active_job].job_id,
+              updated_at: now
+            )
+          end
+        end
+      ensure
+        failed_steps.each do |step, error|
+          fail_step_with_error(step, error)
+          propagate_halt(step) if step.pipeline.halt?
+        end
       end
 
-      def fail_step_with_error(step, error)
-        step.transition_coordination_status_to!(:failed)
-        step.update_columns(
-          error_class: error.class.name,
-          error_message: error.message
-        )
+      def apply_enqueue_options(active_job, options) # rubocop:disable Metrics/AbcSize,Metrics/CyclomaticComplexity,Metrics/PerceivedComplexity
+        return if options.blank?
+
+        if options[:good_job_labels] && active_job.respond_to?(:good_job_labels=)
+          active_job.good_job_labels = Array(options[:good_job_labels])
+        end
+
+        if options.key?(:good_job_notify) && active_job.respond_to?(:good_job_notify=)
+          active_job.good_job_notify = options[:good_job_notify]
+        end
+
+        active_job.queue_name = options[:queue].to_s if options[:queue]
+        active_job.priority = options[:priority] if options[:priority]
+        active_job.scheduled_at = Time.current + options[:wait] if options[:wait]
       end
 
       def effective_failure_strategy(step)

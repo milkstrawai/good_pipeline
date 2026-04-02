@@ -33,6 +33,21 @@ module ActiveSupport
       GoodJob.perform_inline
     end
 
+    def run_pipeline_to_completion(pipeline_record, timeout: 15)
+      deadline = Time.current + timeout
+      loop do
+        perform_enqueued_jobs_inline
+        pipeline_record.reload
+        return pipeline_record if pipeline_record.terminal?
+
+        if Time.current > deadline
+          raise "Pipeline did not reach terminal state within #{timeout}s (status: #{pipeline_record.status})"
+        end
+
+        sleep 0.05
+      end
+    end
+
     def wait_until(timeout: 10, interval: 0.1)
       deadline = Time.current + timeout
       loop do

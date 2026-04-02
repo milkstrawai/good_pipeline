@@ -3,21 +3,6 @@
 require "test_helper"
 
 class TestEndToEnd < ActiveSupport::TestCase
-  def run_pipeline_to_completion(pipeline_record, timeout: 15)
-    deadline = Time.current + timeout
-    loop do
-      perform_enqueued_jobs_inline
-      pipeline_record.reload
-      return pipeline_record if pipeline_record.terminal?
-
-      if Time.current > deadline
-        raise "Pipeline did not reach terminal state within #{timeout}s (status: #{pipeline_record.status})"
-      end
-
-      sleep 0.05
-    end
-  end
-
   def test_full_pipeline_succeeds
     pipeline_record = VideoProcessingPipeline.run(video_id: 123)
 

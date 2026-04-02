@@ -81,9 +81,8 @@ module GoodPipeline
     end
 
     def enqueue_root_steps(step_id_by_key)
-      @pipeline.root_steps.each do |step_definition|
-        Coordinator.try_enqueue_step(step_id_by_key[step_definition.key])
-      end
+      root_step_ids = @pipeline.root_steps.map { |step_definition| step_id_by_key[step_definition.key] }
+      Coordinator.bulk_enqueue_steps(root_step_ids)
     end
 
     def resolve_job_class(step_definition)

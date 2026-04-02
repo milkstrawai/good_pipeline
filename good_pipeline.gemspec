@@ -37,6 +37,6 @@ Gem::Specification.new do |spec|
   spec.require_paths = ["lib"]
 
   spec.add_dependency "activerecord", ">= 7.1"
-  spec.add_dependency "good_job", ">= 3.10"
+  spec.add_dependency "good_job", ">= 4.14"
   spec.add_dependency "railties", ">= 7.1"
 end
