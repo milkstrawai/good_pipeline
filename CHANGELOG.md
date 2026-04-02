@@ -1,5 +1,21 @@
 ## [Unreleased]
 
+## [0.4.0] - 2026-04-02
+
+### Performance
+
+- **Bulk root step enqueuing** — pipelines with multiple root steps now enqueue all of them via `GoodJob::Batch.enqueue_all` in a fixed number of queries instead of ~9 queries per step. Both `Runner#enqueue_root_steps` and `ChainCoordinator#start_pipeline` use the new `Coordinator.bulk_enqueue_steps` method.
+
+### Added
+
+- **Configurable queue names for internal jobs** — new `coordination_queue_name` and `callback_queue_name` settings control which queues `StepFinishedJob`, `PipelineReconciliationJob`, and `PipelineCallbackJob` run on. Configurable globally (`GoodPipeline.coordination_queue_name = "x"`) and per-pipeline via the class DSL. Defaults to `"good_pipeline_coordination"` and `"good_pipeline_callbacks"`.
+- **`Coordinator.bulk_enqueue_steps`** — public method that loads pending steps, partitions branch steps for individual handling, and bulk-enqueues the rest via `Batch.enqueue_all`. Invalid job classes are failed individually without blocking valid steps.
+
+### Changed
+
+- **Minimum GoodJob version** — bumped from `>= 3.10` to `>= 4.14` (required for `Batch.enqueue_all`).
+- **`run_pipeline_to_completion` test helper** — extracted from 3 integration test files into `test_helper.rb`.
+
 ## [0.3.1] - 2026-03-26
 
 ### Added
