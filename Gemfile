@@ -18,5 +18,5 @@ gem "benchmark", "~> 0.5.0"
 gem "benchmark-ips", "~> 2.14"
 
 gem "pg", "~> 1.6", ">= 1.6.3"
-gem "puma", "~> 7.2"
+gem "puma", "~> 8.0"
 gem "rails", ">= 7.1"
