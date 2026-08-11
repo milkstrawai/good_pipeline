@@ -1,0 +1,101 @@
+<%
+  now = @now || Time.current
+  expanded_id = filters.respond_to?(:expanded) ? filters.expanded : params[:expanded].presence
+  is_open = expanded_id.to_s == pipeline.id.to_s
+  status = pipeline.status.to_s
+  status_meta = {
+    "pending" => ["○", "pending", "pending"],
+    "running" => ["●", "running", "running"],
+    "enqueued" => ["●", "enqueued", "running"],
+    "succeeded" => ["✓", "succeeded", "succeeded"],
+    "failed" => ["✗", "failed", "failed"],
+    "halted" => ["⊘", "halted", "halted"],
+    "skipped" => ["⊘", "skipped", "skipped"],
+    "skipped_by_branch" => ["⊘", "skipped·br", "skipped"]
+  }.freeze
+  glyph, status_label, status_color = status_meta.fetch(status, ["○", status, "pending"])
+  short = respond_to?(:short_type) ? short_type(pipeline.type) : humanized_type(pipeline.type).sub(/\s*Pipeline\z/, "")
+  relative = lambda do |time|
+    seconds = [(now - time).to_i, 0].max
+    if seconds < 60 then "#{seconds}s ago"
+    elsif seconds < 3_600 then "#{seconds / 60}m ago"
+    elsif seconds < 86_400 then "#{seconds / 3_600}h ago"
+    else "#{seconds / 86_400}d ago"
+    end
+  end
+  duration = lambda do |seconds|
+    next "—" if seconds.nil?
+    value = seconds.to_f.to_i
+    if value < 60 then "#{value}s"
+    elsif value < 3_600 then "#{value / 60}m #{value % 60}s"
+    else "#{value / 3_600}h #{(value % 3_600) / 60}m"
+    end
+  end
+  elapsed = ((pipeline.terminal? ? pipeline.updated_at : now) - pipeline.created_at).to_f
+  counts = steps.each_with_object(Hash.new(0)) { |step, memo| memo[step.coordination_status.to_s] += 1 }
+  done = counts["succeeded"]
+  many = steps.length > 12
+  stack_order = %w[succeeded failed halted enqueued running pending skipped skipped_by_branch]
+  status_var = ->(value) { value == "enqueued" ? "running" : value.start_with?("skipped") ? "skipped" : value }
+  params_preview = pipeline.params.to_h.map { |key, value| "#{key}=#{value.to_json}" }.join(" · ")
+  href_params = request.query_parameters.except("expanded")
+  href_params["expanded"] = pipeline.id.to_s unless is_open
+  expand_url = pipelines_path(href_params)
+%>
+<tr class="gp-row <%= 'is-open' if is_open %>"
+    data-gp-expand-url="<%= expand_url %>"
+    data-id="<%= pipeline.id %>"
+    <% if is_open %>data-collapse-expand<% end %>>
+  <td class="gp-td-expand">
+    <%= link_to(is_open ? "▾" : "▸", expand_url,
+                aria: { label: is_open ? "Collapse execution" : "Expand execution", expanded: is_open },
+                data: { gp_partial_link: true }) %>
+  </td>
+  <td>
+    <div class="gp-when-rel"><%= relative.call(pipeline.created_at) %></div>
+    <time class="gp-when-abs" datetime="<%= pipeline.created_at.utc.iso8601 %>"><%= pipeline.created_at.utc.strftime("%Y-%m-%d %H:%M:%SZ") %></time>
+  </td>
+  <td>
+    <span class="gp-execution-cell">
+    <span class="gp-execution-name"><%= short %></span>
+    <span class="gp-execution-id">#<%= pipeline.id.to_s.first(8) %></span>
+    <button class="gp-copy" type="button" title="Copy execution id" data-gp-copy="<%= pipeline.id %>" data-gp-copy-label="execution id">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="5" width="9" height="9" rx="1.5"></rect><path d="M11 5V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h2"></path></svg>
+    </button>
+    <%= link_to pipeline_path(pipeline), class: "gp-open-detail", title: "Open detail page", aria: { label: "Open execution detail" } do %>
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3.5h3.5V7"></path><path d="M12.5 3.5 7.5 8.5"></path><path d="M12 10v2a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 2 12V5a1.5 1.5 0 0 1 1.5-1.5H6"></path></svg>
+    <% end %>
+    </span>
+  </td>
+  <td title="<%= done %> succeeded steps of <%= steps.length %> total steps">
+    <% if many %>
+      <span class="gp-step-stack" aria-hidden="true">
+        <% stack_order.each do |step_status| %>
+          <% next if counts[step_status].zero? %>
+          <% opacity = step_status == "pending" ? 0.3 : (step_status.start_with?("skipped") ? 0.45 : 1) %>
+          <span style="--gp-width:<%= (counts[step_status].to_f / steps.length * 100).round(2) %>%;--gp-status:var(--st-<%= status_var.call(step_status) %>);--gp-opacity:<%= opacity %>" title="<%= counts[step_status] %> <%= step_status %>"></span>
+        <% end %>
+      </span>
+    <% else %>
+      <span class="gp-step-dots" aria-hidden="true">
+        <% steps.each do |step| %>
+          <% step_status = step.coordination_status.to_s; branch = step.respond_to?(:branch_step?) ? step.branch_step? : step.job_class == GoodPipeline::BRANCH_JOB_CLASS %>
+          <span class="gp-step-dot <%= 'is-branch' if branch %>" style="--gp-status:var(--st-<%= status_var.call(step_status) %>);--gp-opacity:<%= step_status == 'pending' ? 0.35 : 1 %>" title="<%= step.key %>: <%= step_status %>"></span>
+        <% end %>
+      </span>
+    <% end %>
+    <span class="gp-step-summary"><%= done %>/<%= steps.length %></span>
+  </td>
+  <td><span class="gp-status gp-status--<%= status %>"><%= glyph %> <%= status_label %></span></td>
+  <td class="mono"><%= duration.call(elapsed) %></td>
+  <td><span class="gp-params-preview"><%= params_preview %></span></td>
+</tr>
+<% if is_open %>
+  <tr class="gp-row-detail">
+    <td colspan="7">
+      <%= render "row_detail", pipeline: pipeline, steps: steps,
+                 timings: (@step_timings || {}), lanes: (@stage_lanes || []),
+                 dependencies: (@expanded_dependencies || []) %>
+    </td>
+  </tr>
+<% end %>

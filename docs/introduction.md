@@ -55,6 +55,6 @@ Choose Geneva Drive when your workflow is inherently sequential and you need pau
 ## Requirements
 
 - Ruby >= 3.2
-- Rails >= 7.1
+- Rails >= 7.2
 - PostgreSQL
 - GoodJob >= 4.14 with `preserve_job_records = true`

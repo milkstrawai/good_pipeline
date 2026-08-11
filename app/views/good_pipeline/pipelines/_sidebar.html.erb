@@ -1,0 +1,115 @@
+<%
+  entries = Array(local_assigns[:entries] || @sidebar_entries)
+  filters = local_assigns[:filters] || @filters
+  mode = local_assigns.fetch(:mode, :executions)
+  get = lambda do |object, key|
+    if object.respond_to?(key)
+      object.public_send(key)
+    elsif object.respond_to?(:[])
+      object[key] || object[key.to_s]
+    end
+  rescue NameError, IndexError, KeyError, TypeError
+    nil
+  end
+  current_type = filters.respond_to?(:pipeline_type) ? filters.pipeline_type : params[:pipeline_type].presence
+  counts = entries.map { |entry| (get.call(entry, mode == :definitions ? :step_count : :run_count) || get.call(entry, :count) || 0).to_i }
+  max_count = [counts.max.to_i, 1].max
+  total_runs = entries.sum { |entry| (get.call(entry, :run_count) || get.call(entry, :count) || 0).to_i }
+  base_params = request.query_parameters.except("pipeline_type", "page", "expanded")
+  retention_seconds = local_assigns[:retention_seconds] || @retention_seconds
+  retention_seconds ||= if defined?(GoodJob) && GoodJob.respond_to?(:configuration)
+    GoodJob.configuration.cleanup_preserved_jobs_before_seconds_ago
+  end
+  retention_label = if retention_seconds
+    seconds = retention_seconds.to_i
+    if seconds >= 86_400 && (seconds % 86_400).zero?
+      "#{seconds / 86_400}d"
+    elsif seconds >= 3_600 && (seconds % 3_600).zero?
+      "#{seconds / 3_600}h"
+    else
+      "#{seconds}s"
+    end
+  else
+    "configured"
+  end
+%>
+<aside class="gp-sidebar">
+  <div class="gp-sidebar-head">
+    <span class="gp-brand">
+      <span class="gp-brand-mark" aria-hidden="true">gp</span>
+      <span class="gp-brand-name">good_pipeline</span>
+      <span class="gp-brand-version">v<%= GoodPipeline::VERSION %></span>
+    </span>
+  </div>
+
+  <% if mode == :definitions %>
+    <%= link_to pipelines_path, class: "gp-sidebar-row gp-sidebar-all" do %>
+      <span class="gp-sidebar-label"><span aria-hidden="true">←</span> All executions</span>
+      <span class="gp-sidebar-count"><%= number_with_delimiter(total_runs) %></span>
+    <% end %>
+  <% else %>
+    <%= link_to pipelines_path(base_params), class: "gp-sidebar-row gp-sidebar-all #{'is-active' if current_type.blank?}", aria: ({ current: "page" } if current_type.blank?) do %>
+      <span class="gp-sidebar-label"><span class="gp-sidebar-dot"></span>All executions</span>
+      <span class="gp-sidebar-count"><%= number_with_delimiter(total_runs) %></span>
+    <% end %>
+  <% end %>
+
+  <div class="gp-sidebar-scroll">
+    <div class="gp-sidebar-group">
+      <div class="gp-sidebar-group-head">
+        <span><%= mode == :definitions ? "definitions" : "pipelines" %></span>
+        <span class="gp-sidebar-group-count"><%= entries.length %></span>
+      </div>
+      <% entries.each_with_index do |entry, index| %>
+        <%
+          type = get.call(entry, :type).to_s
+          strategy = (get.call(entry, :on_failure_strategy) || get.call(entry, :strategy) || "halt").to_s
+          count = (get.call(entry, mode == :definitions ? :step_count : :run_count) || get.call(entry, :count) || 0).to_i
+          step_count = (get.call(entry, :step_count) || 0).to_i
+          has_branch = !!get.call(entry, :has_branch)
+          short = respond_to?(:short_type) ? short_type(type) : humanized_type(type).sub(/\s*Pipeline\z/, "")
+        %>
+        <% if mode == :definitions %>
+          <button type="button"
+                  class="gp-sidebar-row gp-definition-item <%= 'is-active' if index.zero? %>"
+                  data-gp-definition-target="gp-definition-<%= index %>"
+                  data-gp-definition-name="<%= short %>"
+                  data-gp-definition-meta="<%= step_count %> steps · <%= strategy %>">
+            <span class="gp-sidebar-bar" style="--gp-width:<%= (count.to_f / max_count * 100).round(2) %>%"></span>
+            <span class="gp-sidebar-label">
+              <span class="gp-sidebar-dot strategy-<%= strategy %>" title="on_failure: <%= strategy %>"></span>
+              <span class="gp-sidebar-name"><%= short %></span>
+              <% if has_branch %><span class="gp-sidebar-tag" title="has conditional branch">br</span><% end %>
+              <% if step_count > 60 %><span class="gp-sidebar-tag gp-sidebar-tag--xl" title="<%= step_count %> steps">xl</span><% end %>
+            </span>
+            <span class="gp-sidebar-count"><%= number_with_delimiter(count) %></span>
+          </button>
+        <% else %>
+          <% active = current_type == type %>
+          <%= link_to pipelines_path(base_params.merge("pipeline_type" => type)), class: "gp-sidebar-row #{'is-active' if active}", aria: ({ current: "page" } if active) do %>
+            <span class="gp-sidebar-bar" style="--gp-width:<%= (count.to_f / max_count * 100).round(2) %>%"></span>
+            <span class="gp-sidebar-label">
+              <span class="gp-sidebar-dot strategy-<%= strategy %>" title="on_failure: <%= strategy %>"></span>
+              <span class="gp-sidebar-name"><%= short %></span>
+              <% if has_branch %><span class="gp-sidebar-tag" title="has conditional branch">br</span><% end %>
+              <% if step_count > 60 %><span class="gp-sidebar-tag gp-sidebar-tag--xl" title="<%= step_count %> steps">xl</span><% end %>
+            </span>
+            <span class="gp-sidebar-count"><%= number_with_delimiter(count) %></span>
+          <% end %>
+        <% end %>
+      <% end %>
+    </div>
+  </div>
+
+  <div class="gp-sidebar-foot">
+    <div class="gp-legend">
+      <span><i class="strategy-halt" style="background:var(--strat-halt)"></i> halt</span>
+      <span><i class="strategy-continue" style="background:var(--strat-continue)"></i> continue</span>
+      <span><i class="strategy-ignore" style="background:var(--strat-ignore)"></i> ignore</span>
+    </div>
+    <div class="gp-retention" title="Terminal pipelines are pruned with GoodJob's cleanup cycle">
+      <span class="gp-retention-label"><%= mode == :definitions ? "column" : "retention" %></span>
+      <span class="gp-retention-value"><%= mode == :definitions ? "steps per definition" : "#{retention_label} · goodjob" %></span>
+    </div>
+  </div>
+</aside>

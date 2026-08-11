@@ -1,0 +1,55 @@
+<%
+  lanes = Array(local_assigns[:lanes])
+  get = lambda do |object, key|
+    if object.respond_to?(key)
+      object.public_send(key)
+    elsif object.respond_to?(:[])
+      object[key] || object[key.to_s]
+    end
+  rescue NameError, IndexError, KeyError, TypeError
+    nil
+  end
+  status_name = ->(value) { value.to_s == "enqueued" ? "running" : value.to_s.start_with?("skipped") ? "skipped" : value.to_s }
+  duration = lambda do |seconds|
+    next "—" if seconds.nil?
+    value = seconds.to_f.to_i
+    if value < 60 then "#{value}s"
+    elsif value < 3_600 then "#{value / 60}m #{value % 60}s"
+    else "#{value / 3_600}h #{(value % 3_600) / 60}m"
+    end
+  end
+%>
+<div class="gp-timeline">
+  <% lanes.each do |lane| %>
+    <%
+      label = get.call(lane, :label) || get.call(lane, :stage)
+      worst = (get.call(lane, :worst) || get.call(lane, :status) || "pending").to_s
+      t0 = get.call(lane, :t0)
+      t1 = get.call(lane, :t1)
+      lane_duration = get.call(lane, :dur_s) || get.call(lane, :duration) || get.call(lane, :duration_seconds)
+      counts = get.call(lane, :counts) || {}
+      count = (get.call(lane, :n) || get.call(lane, :count) || 1).to_i
+      provided_note = get.call(lane, :note)
+      open_ended = !!get.call(lane, :open_ended)
+      note = if provided_note.present?
+        provided_note
+      elsif t0.nil? || t1.nil?
+        worst == "skipped_by_branch" ? "skipped·br" : worst
+      elsif count > 1 && counts.respond_to?(:map)
+        counts.map { |key, value| "#{value} #{key.to_s.sub('_by_branch', '·br')}" }.first(2).join(", ")
+      else
+        duration.call(lane_duration)
+      end
+    %>
+    <div class="gp-lane">
+      <span class="gp-lane-label" title="<%= label %>"><%= label %></span>
+      <span class="gp-lane-track">
+        <% unless t0.nil? || t1.nil? %>
+          <span class="gp-lane-bar <%= 'is-running' if open_ended %>" style="--gp-left:<%= (t0.to_f.clamp(0, 1) * 100).round(2) %>%;--gp-width:<%= ([(t1.to_f.clamp(0, 1) - t0.to_f.clamp(0, 1)) * 100, 1.5].max).round(2) %>%;--gp-status:var(--st-<%= status_name.call(worst) %>)"></span>
+        <% end %>
+      </span>
+      <span class="gp-lane-note" title="<%= note %>"><%= note %></span>
+    </div>
+  <% end %>
+  <% if lanes.empty? %><div class="gp-empty-sub">No step timing data is available.</div><% end %>
+</div>

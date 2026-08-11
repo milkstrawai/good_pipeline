@@ -1,106 +1,226 @@
 # frozen_string_literal: true
 
 module GoodPipeline
-  class MermaidDiagramBuilder
-    DEFINITION_CLASSES = [
-      "  classDef step fill:#4a90d9,color:#fff,stroke:#3a7bc8",
-      "  classDef branch fill:#ff9800,color:#fff,stroke:#f57c00",
-      "  classDef terminal fill:#1a1a2e,color:#fff,stroke:#1a1a2e"
-    ].freeze
+  # Produces only the Mermaid graph body. Theme-dependent class definitions are
+  # appended by dashboard.js so changing theme can never reuse stale colours.
+  # User-controlled step keys are labels only; generated n0..nN identifiers are
+  # used everywhere in the graph syntax.
+  class MermaidDiagramBuilder # rubocop:disable Metrics/ClassLength
+    MAX_EDGES = 1_000
+    MAX_LABEL_LENGTH = 64
+    STATUSES = %w[pending running enqueued succeeded failed halted skipped skipped_by_branch].freeze
+    Edge = Struct.new(:upstream, :downstream, keyword_init: true)
+    private_constant :Edge
 
-    STATUS_CLASSES = [
-      "  classDef pending fill:#9e9e9e,color:#fff",
-      "  classDef enqueued fill:#2196f3,color:#fff",
-      "  classDef succeeded fill:#4caf50,color:#fff",
-      "  classDef failed fill:#f44336,color:#fff",
-      "  classDef skipped fill:#bdbdbd,color:#333",
-      "  classDef skipped_by_branch fill:#bdbdbd,color:#333",
-      "  classDef halted fill:#8bc34a,color:#fff",
-      "  classDef branch fill:#ff9800,color:#fff,stroke:#f57c00",
-      "  classDef terminal fill:#1a1a2e,color:#fff,stroke:#1a1a2e"
-    ].freeze
-
-    def initialize(pipeline)
+    def initialize(pipeline) # rubocop:disable Metrics/AbcSize
       @pipeline = pipeline
+      @steps = ordered_steps(pipeline.steps)
+      @dependencies = Array(pipeline.dependencies)
+      @step_by_token = @steps.to_h { |step| [step_token(step), step] }
+      @node_id_by_token = @steps.each_with_index.to_h { |step, index| [step_token(step), "n#{index}"] }
+      @node_id_by_key = @steps.to_h { |step| [step.key.to_s, @node_id_by_token.fetch(step_token(step))] }
+      @terminal_node_id = "n#{@steps.length}"
+      @edges = dependency_edges
+      @edge_count = @dependencies.length
     end
 
     def definition_diagram
-      lines = ["graph TD"]
-      append_step_nodes(lines) { |step| step.branch_step? ? "branch" : "step" }
-      append_edges(lines)
-      append_terminal_node(lines)
-      lines.concat(DEFINITION_CLASSES)
-      lines.join("\n")
+      build_diagram { |step| branch_step?(step) ? "branch" : "step" }
     end
 
     def status_diagram
-      lines = ["graph TD"]
-      append_step_nodes(lines) { |step| step.branch_step? ? "branch" : step.coordination_status }
-      append_edges(lines)
-      append_terminal_node(lines)
-      lines.concat(STATUS_CLASSES)
-      lines.join("\n")
+      build_diagram do |step|
+        branch_step?(step) ? "branch" : safe_status(step)
+      end
+    end
+
+    def diagram(mode: :status)
+      mode.to_sym == :definition ? definition_diagram : status_diagram
+    end
+
+    def overflow? = edge_count > MAX_EDGES
+    alias edge_overflow? overflow?
+    def renderable? = !overflow?
+
+    # The number of actual Mermaid arrows includes synthetic terminal and
+    # empty-branch-arm edges. `edge_count` intentionally remains the persisted
+    # DAG dependency count used by the product's >1000-edge contract.
+    def rendered_edge_count
+      @rendered_edge_count ||= begin
+        terminal_edges = terminal_steps.length
+        empty_arm_edges = empty_arm_edge_lines.length
+        @edges.length + terminal_edges + empty_arm_edges
+      end
+    end
+
+    def node_ids
+      @node_id_by_key.dup.freeze
+    end
+
+    attr_reader :edge_count, :terminal_node_id
+
+    def payload(mode: :status)
+      {
+        graph: diagram(mode: mode),
+        edge_count: edge_count,
+        overflow: overflow?
+      }.freeze
     end
 
     private
 
-    def append_step_nodes(lines)
-      @pipeline.steps.each do |step|
+    def build_diagram # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
+      lines = ["graph TD"]
+      @steps.each do |step|
+        node_id = node_id_for(step)
+        label = escape_label(step.key)
         css_class = yield(step)
-        lines << if step.branch_step?
-                   "  #{step.key}{\"#{step.key}\"}:::#{css_class}"
+        lines << if branch_step?(step)
+                   %(  #{node_id}{"#{label}"}:::#{css_class})
                  else
-                   "  #{step.key}(\"#{step.key}\"):::#{css_class}"
+                   %(  #{node_id}("#{label}"):::#{css_class})
                  end
+      end
+
+      @edges.each { |edge| lines << dependency_edge_line(edge) }
+      lines << %(  #{@terminal_node_id}((" ")):::terminal)
+      terminal_steps.each { |step| lines << "  #{node_id_for(step)} --> #{@terminal_node_id}" }
+      lines.concat(empty_arm_edge_lines)
+      lines.join("\n")
+    end
+
+    def dependency_edges
+      @dependencies.filter_map do |dependency|
+        upstream_ref, downstream_ref = dependency_endpoints(dependency)
+        upstream = resolve_step(upstream_ref)
+        downstream = resolve_step(downstream_ref)
+        Edge.new(upstream: upstream, downstream: downstream).freeze if upstream && downstream
       end
     end
 
-    def append_edges(lines)
-      @pipeline.dependencies.each do |dependency|
-        upstream = dependency.depends_on_step
-        downstream = dependency.step
-        lines << if upstream.branch_step? && downstream.branch_arm_step?
-                   "  #{upstream.key} -->|#{downstream.branch_arm}| #{downstream.key}"
-                 else
-                   "  #{upstream.key} --> #{downstream.key}"
-                 end
+    def dependency_edge_line(edge)
+      from = node_id_for(edge.upstream)
+      to = node_id_for(edge.downstream)
+      if branch_step?(edge.upstream) && branch_arm_step?(edge.downstream)
+        label = escape_edge_label(edge.downstream.branch_arm)
+        label.empty? ? "  #{from} --> #{to}" : "  #{from} -->|#{label}| #{to}"
+      else
+        "  #{from} --> #{to}"
       end
     end
 
-    def append_terminal_node(lines)
-      has_downstream_ids = @pipeline.dependencies.to_set { |dependency| dependency.depends_on_step.id }
-      terminal_steps = @pipeline.steps.reject { |step| has_downstream_ids.include?(step.id) }
-
-      lines << "  end_node((\" \")):::terminal"
-      terminal_steps.each { |step| lines << "  #{step.key} --> end_node" }
-
-      append_empty_arm_edges(lines)
+    def terminal_steps
+      @terminal_steps ||= begin
+        has_downstream = @edges.to_set { |edge| step_token(edge.upstream) }
+        @steps.reject { |step| has_downstream.include?(step_token(step)) }
+      end
     end
 
-    def append_empty_arm_edges(lines) # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
-      arm_step_keys_by_branch = @pipeline.steps.select(&:branch_arm_step?).group_by(&:branch_key)
+    def empty_arm_edge_lines # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
+      @empty_arm_edge_lines ||= begin
+        branch_arm_steps = @steps.select { |step| branch_arm_step?(step) }.group_by do |step|
+          step.branch_key.to_s
+        end
 
-      @pipeline.steps.select(&:branch_step?).each do |branch_step|
-        next if branch_step.empty_arms.blank?
-
-        targets = find_post_branch_targets(branch_step, arm_step_keys_by_branch)
-
-        branch_step.empty_arms.each do |arm_name|
-          if targets.any?
-            targets.each { |target| lines << "  #{branch_step.key} -->|#{arm_name}| #{target.key}" }
-          else
-            lines << "  #{branch_step.key} -->|#{arm_name}| end_node"
+        @steps.select { |step| branch_step?(step) }.flat_map do |branch_step|
+          Array(branch_step.empty_arms).flat_map do |arm_name|
+            targets = post_branch_targets(branch_step, branch_arm_steps)
+            label = escape_edge_label(arm_name)
+            if targets.empty?
+              [labelled_edge(node_id_for(branch_step), @terminal_node_id, label)]
+            else
+              targets.map { |target| labelled_edge(node_id_for(branch_step), node_id_for(target), label) }
+            end
           end
         end
       end
     end
 
-    def find_post_branch_targets(branch_step, arm_step_keys_by_branch)
-      arm_keys = (arm_step_keys_by_branch[branch_step.key] || []).to_set(&:key)
+    def post_branch_targets(branch_step, branch_arm_steps) # rubocop:disable Metrics/AbcSize
+      arm_tokens = Array(branch_arm_steps[branch_step.key.to_s]).to_set { |step| step_token(step) }
+      return [] if arm_tokens.empty?
 
-      @pipeline.steps.select do |step|
-        !arm_keys.include?(step.key) && step.upstream_steps.any? { |upstream| arm_keys.include?(upstream.key) }
+      target_tokens = @edges.filter_map do |edge|
+        upstream_token = step_token(edge.upstream)
+        downstream_token = step_token(edge.downstream)
+        downstream_token if arm_tokens.include?(upstream_token) && !arm_tokens.include?(downstream_token)
+      end.to_set
+      @steps.select { |step| target_tokens.include?(step_token(step)) }
+    end
+
+    def labelled_edge(from, to, label)
+      label.empty? ? "  #{from} --> #{to}" : "  #{from} -->|#{label}| #{to}"
+    end
+
+    def dependency_endpoints(dependency) # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
+      if dependency.is_a?(Hash)
+        upstream = dependency[:depends_on_step_id] || dependency["depends_on_step_id"] ||
+                   dependency[:from] || dependency["from"]
+        downstream = dependency[:step_id] || dependency["step_id"] ||
+                     dependency[:to] || dependency["to"]
+        return [upstream, downstream]
       end
+      return [dependency[0], dependency[1]] if dependency.is_a?(Array)
+
+      upstream = dependency.depends_on_step_id if dependency.respond_to?(:depends_on_step_id)
+      downstream = dependency.step_id if dependency.respond_to?(:step_id)
+      upstream ||= dependency.depends_on_step if dependency.respond_to?(:depends_on_step)
+      downstream ||= dependency.step if dependency.respond_to?(:step)
+      [upstream, downstream]
+    end
+
+    def resolve_step(reference)
+      return if reference.nil?
+
+      token = step_token(reference)
+      @step_by_token[token] || @steps.find { |step| step.key.to_s == reference.to_s }
+    end
+
+    def ordered_steps(steps)
+      records = Array(steps)
+      return records unless records.all? do |step|
+        step.respond_to?(:created_at) && step.respond_to?(:id) && step.created_at && step.id
+      end
+
+      records.sort_by { |step| [step.created_at, step.id.to_s] }
+    end
+
+    def step_token(step)
+      return unless step
+      return step.to_s unless step.respond_to?(:key)
+
+      id = step.id if step.respond_to?(:id)
+      (id.nil? || id.to_s.empty? ? step.key : id).to_s
+    end
+
+    def node_id_for(step)
+      @node_id_by_token.fetch(step_token(step))
+    end
+
+    def branch_step?(step)
+      return step.branch_step? if step.respond_to?(:branch_step?)
+
+      step.respond_to?(:job_class) && step.job_class.to_s == GoodPipeline::BRANCH_JOB_CLASS
+    end
+
+    def branch_arm_step?(step)
+      return step.branch_arm_step? if step.respond_to?(:branch_arm_step?)
+
+      step.respond_to?(:branch_arm) && !step.branch_arm.to_s.empty?
+    end
+
+    def safe_status(step)
+      status = step.respond_to?(:coordination_status) ? step.coordination_status.to_s : "pending"
+      STATUSES.include?(status) ? status : "pending"
+    end
+
+    def escape_label(value)
+      clean = value.to_s.gsub(/[\u0000-\u001f\u007f]/, "").gsub('"', "#quot;")
+      clean.each_char.first(MAX_LABEL_LENGTH).join
+    end
+
+    def escape_edge_label(value)
+      escape_label(value).gsub(/[^\w .:-]/, "").each_char.first(MAX_LABEL_LENGTH).join
     end
   end
 end

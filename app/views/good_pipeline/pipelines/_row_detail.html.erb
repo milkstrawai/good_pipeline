@@ -1,0 +1,96 @@
+<%
+  get = lambda do |object, key|
+    if object.respond_to?(key)
+      object.public_send(key)
+    elsif object.respond_to?(:[])
+      object[key] || object[key.to_s]
+    end
+  rescue NameError, IndexError, KeyError, TypeError
+    nil
+  end
+  status_meta = {
+    "pending" => ["○", "pending", "pending"], "running" => ["●", "running", "running"],
+    "enqueued" => ["●", "enqueued", "running"], "succeeded" => ["✓", "succeeded", "succeeded"],
+    "failed" => ["✗", "failed", "failed"], "halted" => ["⊘", "halted", "halted"],
+    "skipped" => ["⊘", "skipped", "skipped"], "skipped_by_branch" => ["⊘", "skipped·br", "skipped"]
+  }.freeze
+  duration = lambda do |seconds|
+    next "—" if seconds.nil?
+    value = seconds.to_f.to_i
+    if value < 60 then "#{value}s"
+    elsif value < 3_600 then "#{value / 60}m #{value % 60}s"
+    else "#{value / 3_600}h #{(value % 3_600) / 60}m"
+    end
+  end
+  timing_for = lambda do |step|
+    timings[step.good_job_id] || timings[step.good_job_id.to_s] || timings[step.id] || timings[step.id.to_s]
+  end
+  timing_parts = lambda do |timing|
+    if timing.is_a?(Array)
+      timing
+    else
+      [get.call(timing, :performed_at) || get.call(timing, :started_at), get.call(timing, :finished_at)]
+    end
+  end
+  priority = { "failed" => 0, "halted" => 1, "enqueued" => 2, "running" => 2, "pending" => 3 }.freeze
+  table_steps = steps.length > 12 ? steps.sort_by { |step| [priority.fetch(step.coordination_status.to_s, 9), step.created_at, step.id.to_s] } : steps
+  done = steps.count { |step| step.coordination_status.to_s == "succeeded" }
+  total_duration = ((pipeline.terminal? ? pipeline.updated_at : (@now || Time.current)) - pipeline.created_at).to_f
+  ruby_snippet = %(GoodPipeline::PipelineRecord.find("#{pipeline.id}"))
+  sql_snippet = "SELECT *\nFROM good_pipeline_pipelines\nWHERE id = '#{pipeline.id}';"
+%>
+<div class="gp-row-detail-inner">
+  <div class="gp-detail-grid">
+    <section class="gp-detail-section">
+      <h3 class="gp-section-heading">steps <span class="gp-heading-meta"><%= steps.length > 12 ? "#{steps.length} steps · failures & active first" : "#{done}/#{steps.length}" %></span></h3>
+      <div class="gp-scroll-steps">
+        <table class="gp-compact-table">
+          <tbody>
+            <% table_steps.each do |step| %>
+              <% step_status = step.coordination_status.to_s; glyph, label, = status_meta.fetch(step_status, ["○", step_status, "pending"]); timing = timing_for.call(step); started_at, finished_at = timing_parts.call(timing); step_duration = started_at && finished_at ? finished_at - started_at : nil %>
+              <tr>
+                <td class="gp-step-key"><%= step.key %></td>
+                <td class="gp-job-class" title="<%= step.job_class %>"><%= step.job_class %></td>
+                <td><span class="gp-status gp-status--<%= step_status %>"><%= glyph %> <%= label %></span></td>
+                <td class="gp-step-duration"><%= duration.call(step_duration) %></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="gp-detail-section">
+      <h3 class="gp-section-heading">params · identity <span class="gp-strategy gp-strategy--<%= pipeline.on_failure_strategy %>">on_failure: <%= pipeline.on_failure_strategy %></span></h3>
+      <table class="gp-kv"><tbody>
+        <tr><td class="gp-kv-key">id</td><td class="gp-kv-value"><%= pipeline.id %></td></tr>
+        <tr><td class="gp-kv-key">type</td><td class="gp-kv-value"><%= pipeline.type %></td></tr>
+        <tr><td class="gp-kv-key">params</td><td class="gp-kv-value"><%= pipeline.params.to_json %></td></tr>
+        <tr><td class="gp-kv-key">created_at</td><td class="gp-kv-value"><%= pipeline.created_at.utc.strftime("%Y-%m-%d %H:%M:%SZ") %></td></tr>
+        <tr><td class="gp-kv-key">status</td><td class="gp-kv-value"><%= pipeline.status %></td></tr>
+      </tbody></table>
+      <div class="gp-actions">
+        <button class="gp-action" type="button" disabled title="not yet implemented"><%= %w[failed halted].include?(pipeline.status.to_s) ? "retry failed step" : "re-run pipeline" %></button>
+        <% if pipeline.status.to_s == "running" %><button class="gp-action gp-action--danger" type="button" disabled title="not yet implemented">cancel pipeline</button><% end %>
+        <%= link_to "detail page + dag ↗", pipeline_path(pipeline), class: "gp-action gp-action--ghost" %>
+      </div>
+    </section>
+
+    <section class="gp-detail-section gp-detail-wide">
+      <h3 class="gp-section-heading"><%= steps.length > 12 ? "stage timeline (#{lanes.length} stages · #{steps.length} steps)" : "step timeline" %><span class="gp-heading-meta">total <%= duration.call(total_duration) %></span></h3>
+      <%= render "timeline", lanes: lanes %>
+    </section>
+
+    <section class="gp-detail-section gp-detail-wide">
+      <h3 class="gp-section-heading">requery</h3>
+      <div class="gp-code-wrap">
+        <button class="gp-copy" type="button" title="Copy Ruby snippet" data-gp-copy="<%= ruby_snippet %>" data-gp-copy-label="Ruby snippet"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="5" y="5" width="9" height="9" rx="1.5"></rect><path d="M11 5V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h2"></path></svg></button>
+        <pre class="gp-code"><%= ruby_snippet %></pre>
+      </div>
+      <div class="gp-code-wrap">
+        <button class="gp-copy" type="button" title="Copy SQL snippet" data-gp-copy="<%= sql_snippet %>" data-gp-copy-label="SQL snippet"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="5" y="5" width="9" height="9" rx="1.5"></rect><path d="M11 5V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h2"></path></svg></button>
+        <pre class="gp-code"><%= sql_snippet %></pre>
+      </div>
+    </section>
+  </div>
+</div>

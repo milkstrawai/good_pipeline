@@ -1,155 +1,24 @@
-<!DOCTYPE html>
-<html lang="en" data-theme="light">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>GoodPipeline</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
-  <link rel="stylesheet" href="<%= frontend_static_path(id: 'style', format: :css) %>">
-</head>
-<body>
-  <header class="dashboard-header">
-    <span class="header-left">
-      <%= link_to "GoodPipeline", root_path %>
-      <%= link_to "Definitions", definitions_pipelines_path, class: "header-nav-link" %>
-    </span>
-    <span class="header-right">
-      <span class="header-version">v<%= GoodPipeline::VERSION %></span>
-      <a href="https://github.com/milkstrawai/good_pipeline" target="_blank" rel="noopener" class="header-github" title="GitHub">
-        <svg height="18" width="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-      </a>
-    </span>
-  </header>
-  <main class="dashboard-content">
+<% theme = %w[dark light].include?(cookies[:good_pipeline_theme]) ? cookies[:good_pipeline_theme] : "dark" %>
+<!doctype html>
+<html lang="en" data-gp-theme="<%= theme %>">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="<%= form_authenticity_token %>">
+    <meta name="good-pipeline-theme-url" content="<%= theme_path %>">
+    <meta name="turbo-visit-control" content="reload">
+    <title>GoodPipeline</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23111317'/%3E%3Ctext x='5' y='22' fill='%23e6e9ef' font-family='monospace' font-size='16'%3Egp%3C/text%3E%3C/svg%3E">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="<%= frontend_static_path(id: "dashboard", format: :css) %>">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js" defer nonce="<%= content_security_policy_nonce %>"></script>
+    <script src="<%= frontend_static_path(id: "dashboard", format: :js) %>" defer nonce="<%= content_security_policy_nonce %>"></script>
+  </head>
+  <body>
     <%= yield %>
-  </main>
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
-  <script>
-    mermaid.initialize({
-      startOnLoad: true,
-      theme: 'neutral',
-      flowchart: { curve: 'basis', nodeSpacing: 30, rankSpacing: 50 }
-    });
-    document.querySelectorAll('tr[data-href]').forEach(function(row) {
-      row.addEventListener('click', function() {
-        window.location = this.dataset.href;
-      });
-    });
-  </script>
-  <script>
-    (function() {
-      var MIN_SCALE = 0.5, MAX_SCALE = 4, ZOOM_STEP = 0.25;
-      var states = new WeakMap();
-
-      function getState(container) {
-        if (!states.has(container)) states.set(container, { scale: 1, panX: 0, panY: 0 });
-        return states.get(container);
-      }
-
-      function applyTransform(container) {
-        var s = getState(container);
-        var canvas = container.querySelector('.diagram-canvas');
-        if (canvas) canvas.style.transform = 'translate(' + s.panX + 'px, ' + s.panY + 'px) scale(' + s.scale + ')';
-      }
-
-      function clampScale(val) {
-        return Math.min(MAX_SCALE, Math.max(MIN_SCALE, val));
-      }
-
-      function zoomAroundPoint(s, centerX, centerY, newScale) {
-        var oldScale = s.scale;
-        newScale = clampScale(newScale);
-        if (newScale === oldScale) return;
-        var ratio = newScale / oldScale;
-        s.panX = centerX - (centerX - s.panX) * ratio;
-        s.panY = centerY - (centerY - s.panY) * ratio;
-        s.scale = newScale;
-      }
-
-      // Button actions via event delegation
-      document.addEventListener('click', function(e) {
-        var btn = e.target.closest('[data-action]');
-        if (!btn) return;
-        var container = btn.closest('.diagram-container');
-        if (!container) return;
-        var s = getState(container);
-        var action = btn.dataset.action;
-
-        if (action === 'zoom-in' || action === 'zoom-out') {
-          var viewport = container.querySelector('.diagram-viewport');
-          var rect = viewport.getBoundingClientRect();
-          var centerX = rect.width / 2;
-          var centerY = rect.height / 2;
-          var delta = action === 'zoom-in' ? ZOOM_STEP : -ZOOM_STEP;
-          zoomAroundPoint(s, centerX, centerY, s.scale + delta);
-        } else if (action === 'zoom-reset') {
-          s.scale = 1; s.panX = 0; s.panY = 0;
-        } else if (action === 'fullscreen') {
-          if (document.fullscreenElement === container) {
-            document.exitFullscreen();
-          } else {
-            container.requestFullscreen();
-          }
-          return;
-        }
-        applyTransform(container);
-      });
-
-      // Mouse wheel zoom toward cursor
-      document.querySelectorAll('.diagram-viewport').forEach(function(viewport) {
-        viewport.addEventListener('wheel', function(e) {
-          e.preventDefault();
-          var container = viewport.closest('.diagram-container');
-          var s = getState(container);
-          var rect = viewport.getBoundingClientRect();
-          var cursorX = e.clientX - rect.left;
-          var cursorY = e.clientY - rect.top;
-          var delta = e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP;
-          zoomAroundPoint(s, cursorX, cursorY, s.scale + delta);
-          applyTransform(container);
-        }, { passive: false });
-      });
-
-      // Click-drag pan
-      document.querySelectorAll('.diagram-viewport').forEach(function(viewport) {
-        viewport.addEventListener('mousedown', function(e) {
-          if (e.button !== 0) return;
-          var container = viewport.closest('.diagram-container');
-          var canvas = container.querySelector('.diagram-canvas');
-          var s = getState(container);
-          var startX = e.clientX - s.panX;
-          var startY = e.clientY - s.panY;
-          canvas.classList.add('dragging');
-
-          function onMove(ev) {
-            s.panX = ev.clientX - startX;
-            s.panY = ev.clientY - startY;
-            applyTransform(container);
-          }
-          function onUp() {
-            canvas.classList.remove('dragging');
-            document.removeEventListener('mousemove', onMove);
-            document.removeEventListener('mouseup', onUp);
-          }
-          document.addEventListener('mousemove', onMove);
-          document.addEventListener('mouseup', onUp);
-        });
-      });
-
-      // Reset zoom when switching definitions
-      document.querySelectorAll('.definition-item').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-          var type = btn.dataset.pipeline;
-          var panel = document.querySelector('.definition-panel[data-pipeline="' + type + '"]');
-          if (!panel) return;
-          var container = panel.querySelector('.diagram-container');
-          if (!container) return;
-          var s = getState(container);
-          s.scale = 1; s.panX = 0; s.panY = 0;
-          applyTransform(container);
-        });
-      });
-    })();
-  </script>
-</body>
+    <div id="gp-aria-live" class="gp-sr-only" aria-live="polite" aria-atomic="true"></div>
+  </body>
 </html>

@@ -1,52 +1,62 @@
-<p><%= link_to "\u2190 All Pipelines", pipelines_path %></p>
+<%
+  steps = Array(@steps || @pipeline.steps)
+  dependencies = Array(@dependencies || @pipeline.dependencies)
+  timings = @step_timings || {}
+  lanes = Array(@stage_lanes)
+  short = respond_to?(:short_type) ? short_type(@pipeline.type) : humanized_type(@pipeline.type).sub(/\s*Pipeline\z/, "")
+  status_data = { "pending" => ["○", "pending"], "running" => ["●", "running"], "succeeded" => ["✓", "succeeded"], "failed" => ["✗", "failed"], "halted" => ["⊘", "halted"], "skipped" => ["⊘", "skipped"] }
+  glyph, label = status_data.fetch(@pipeline.status.to_s, ["○", @pipeline.status.to_s])
+  now = @now || Time.current
+  elapsed = ((@pipeline.terminal? ? @pipeline.updated_at : now) - @pipeline.created_at).to_f
+  duration = respond_to?(:format_duration) ? format_duration(elapsed) : "#{elapsed.to_i}s"
+  ruby_snippet = %(GoodPipeline::PipelineRecord.find("#{@pipeline.id}"))
+  sql_snippet = "SELECT *\nFROM good_pipeline_pipelines\nWHERE id = '#{@pipeline.id}';"
+  graph = dependencies.length > 1_000 ? "" : mermaid_diagram(@pipeline)
+%>
+<div class="gp-app gp-app--detail">
+  <%= render "topbar", section: "executions", active: short, meta: "##{@pipeline.id.to_s.first(8)}", back: { label: "executions", href: pipelines_path }, connection: @connection_info, now: now %>
 
-<div class="pipeline-detail-grid">
-  <div class="pipeline-detail-left">
-    <article class="pipeline-details">
-      <header><h2><%= humanized_type(@pipeline.type) %></h2></header>
-      <dl>
-        <dt>Status</dt>
-        <dd><%= status_badge(@pipeline.status) %></dd>
-        <dt>Failure Strategy</dt>
-        <dd><span class="strategy-label"><%= @pipeline.on_failure_strategy %></span></dd>
-        <dt>Params</dt>
-        <dd><code><%= @pipeline.params&.to_json %></code></dd>
-        <dt>Created</dt>
-        <dd><%= relative_time_tag(@pipeline.created_at) %></dd>
-        <% if pipeline_duration(@pipeline) %>
-          <dt>Duration</dt>
-          <dd><%= pipeline_duration(@pipeline) %></dd>
-        <% end %>
-      </dl>
-    </article>
+  <header class="gp-detail-header">
+    <span class="gp-detail-title"><%= humanized_type(@pipeline.type) %></span>
+    <span class="gp-status gp-status--<%= @pipeline.status %>"><%= glyph %> <%= label %></span>
+    <span class="gp-strategy gp-strategy--<%= @pipeline.on_failure_strategy %>">on_failure: <%= @pipeline.on_failure_strategy %></span>
+    <span class="gp-detail-uuid"><%= @pipeline.id %><button class="gp-copy" type="button" title="Copy id" data-gp-copy="<%= @pipeline.id %>" data-gp-copy-label="execution id"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="5" y="5" width="9" height="9" rx="1.5"></rect><path d="M11 5V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h2"></path></svg></button></span>
+    <span class="gp-actions">
+      <button class="gp-action" type="button" disabled title="not yet implemented"><%= %w[failed halted].include?(@pipeline.status.to_s) ? "retry failed step" : "re-run pipeline" %></button>
+      <% if @pipeline.status.to_s == "running" %><button class="gp-action gp-action--danger" type="button" disabled title="not yet implemented">cancel pipeline</button><% end %>
+    </span>
+  </header>
 
-    <%= render "chain_links", pipeline: @pipeline %>
+  <div class="gp-detail-scroll">
+    <div class="gp-detail-columns">
+      <div class="gp-detail-column">
+        <section class="gp-card">
+          <h3 class="gp-section-heading">identity</h3>
+          <table class="gp-kv"><tbody>
+            <tr><td class="gp-kv-key">id</td><td class="gp-kv-value"><%= @pipeline.id %></td></tr>
+            <tr><td class="gp-kv-key">type</td><td class="gp-kv-value"><%= @pipeline.type %></td></tr>
+            <tr><td class="gp-kv-key">params</td><td class="gp-kv-value"><%= @pipeline.params.to_json %></td></tr>
+            <tr><td class="gp-kv-key">created_at</td><td class="gp-kv-value"><%= @pipeline.created_at.utc.strftime("%Y-%m-%d %H:%M:%SZ") %></td></tr>
+            <tr><td class="gp-kv-key">updated_at</td><td class="gp-kv-value"><%= @pipeline.updated_at.utc.strftime("%Y-%m-%d %H:%M:%SZ") %></td></tr>
+            <tr><td class="gp-kv-key">duration</td><td class="gp-kv-value"><%= duration %></td></tr>
+          </tbody></table>
+        </section>
+        <%= render "chain_links", pipeline: @pipeline %>
+        <section class="gp-card"><%= render "steps_table", pipeline: @pipeline, steps: steps, timings: timings %></section>
+        <section class="gp-card">
+          <h3 class="gp-section-heading">requery</h3>
+          <div class="gp-code-wrap"><button class="gp-copy" type="button" title="Copy Ruby snippet" data-gp-copy="<%= ruby_snippet %>" data-gp-copy-label="Ruby snippet"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="5" width="9" height="9" rx="1.5"></rect><path d="M11 5V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h2"></path></svg></button><pre class="gp-code"><%= ruby_snippet %></pre></div>
+          <div class="gp-code-wrap"><button class="gp-copy" type="button" title="Copy SQL snippet" data-gp-copy="<%= sql_snippet %>" data-gp-copy-label="SQL snippet"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="5" width="9" height="9" rx="1.5"></rect><path d="M11 5V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h2"></path></svg></button><pre class="gp-code"><%= sql_snippet %></pre></div>
+        </section>
+      </div>
 
-    <article class="table-card">
-      <%= render "steps_table", pipeline: @pipeline %>
-    </article>
-  </div>
-
-  <div class="pipeline-detail-right">
-    <article>
-      <header><h3>Pipeline Graph</h3></header>
-      <% if @pipeline.steps.any? %>
-        <div class="diagram-container">
-          <div class="diagram-toolbar">
-            <button type="button" class="diagram-btn" data-action="zoom-in" title="Zoom in">+</button>
-            <button type="button" class="diagram-btn" data-action="zoom-out" title="Zoom out">&minus;</button>
-            <button type="button" class="diagram-btn" data-action="zoom-reset" title="Reset zoom">Reset</button>
-            <button type="button" class="diagram-btn" data-action="fullscreen" title="Fullscreen">&#x26F6;</button>
-          </div>
-          <div class="diagram-viewport">
-            <div class="diagram-canvas">
-              <pre class="mermaid"><%= raw mermaid_diagram(@pipeline) %></pre>
-            </div>
-          </div>
-        </div>
-      <% else %>
-        <p class="empty-state">No steps defined.</p>
-      <% end %>
-    </article>
+      <div class="gp-detail-column">
+        <%= render "diagram", pipeline: @pipeline, graph: graph, steps: steps, edge_count: dependencies.size, stages: lanes %>
+        <section class="gp-card">
+          <h3 class="gp-section-heading"><%= steps.length > 12 ? "stage timeline" : "step timeline" %><span class="gp-heading-meta"><%= lanes.length %> lanes</span></h3>
+          <%= render "timeline", lanes: lanes %>
+        </section>
+      </div>
+    </div>
   </div>
 </div>

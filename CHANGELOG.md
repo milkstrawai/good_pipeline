@@ -1,5 +1,31 @@
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-11
+
+### Added
+
+- **Redesigned dashboard** — a responsive execution shell with pipeline-type navigation, composable status/time/search filters, offset pagination, KPIs, expandable execution rows, stage timelines, and dedicated execution and definition views.
+- **Persistent light and dark themes** — the dashboard now owns an isolated `data-gp-theme` attribute and persists the topbar toggle through a mount-aware Rails endpoint. Dark is now the default theme; existing users will see the dashboard change from light to dark after upgrading unless they select light.
+- **Scale-aware graph views** — large DAGs default to aggregated stage views, with full Mermaid rendering available up to a 1,000-edge safety limit.
+- **Dashboard upgrade generator** — `good_pipeline:upgrade` creates the three concurrent indexes used by type, status, and chronological dashboard queries, and safely no-ops when that migration already exists.
+- **Rails compatibility matrix** — CI now exercises the Rails 7.2 support floor and the Rails 8.0 and 8.1 lines through Appraisal gemfiles.
+
+### Breaking changes
+
+- **Rails 7.2 minimum** — Rails 7.1 is no longer supported. Rails 7.1 [reached upstream end-of-life in October 2025](https://rubyonrails.org/2025/10/29/new-rails-releases-and-end-of-support-announcement) and no longer receives bug fixes or security fixes.
+
+### Changed
+
+- **Execution pagination** — dashboard lists now use clamped offset pagination with a total page count instead of keyset cursors.
+- **Step timings** — dashboard timing data is batch-loaded from GoodJob, removing per-step lookups while preserving the same retention boundary as job records.
+- **Relative timestamps** — times under one minute now render as exact seconds such as `30s ago` instead of `just now`.
+- **Dashboard dependencies** — versioned dashboard CSS and JavaScript ship with the gem; graph rendering remains build-free and is initialized client-side in strict mode.
+
+### Upgrade notes
+
+- Run `bin/rails generate good_pipeline:upgrade` and `bin/rails db:migrate` to add the dashboard indexes. See `docs/dashboard.md` for recovery steps if a concurrent index build is interrupted.
+- GoodJob may remove timing rows for early steps of a still-running pipeline; those steps render `—` rather than raising or issuing individual lookups.
+
 ## [0.4.0] - 2026-04-02
 
 ### Performance

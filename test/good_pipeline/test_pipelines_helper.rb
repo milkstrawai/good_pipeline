@@ -39,7 +39,9 @@ class TestPipelinesHelper < Minitest::Test
     end
   end
 
-  FakeStep = Struct.new(:key, :coordination_status, :good_job_id, :job_class, :branch_arm, :id, :empty_arms) do
+  FakeStep = Struct.new(
+    :key, :coordination_status, :good_job_id, :job_class, :branch_arm, :branch_key, :id, :empty_arms
+  ) do
     def branch_step? = job_class == GoodPipeline::BRANCH_JOB_CLASS
     def branch_arm_step? = branch_arm.present?
   end
@@ -79,8 +81,8 @@ class TestPipelinesHelper < Minitest::Test
     assert_equal "", relative_time(nil)
   end
 
-  def test_relative_time_just_now
-    assert_equal "just now", relative_time(Time.current - 30)
+  def test_relative_time_seconds_ago
+    assert_equal "30s ago", relative_time(Time.current - 30)
   end
 
   def test_relative_time_minutes_ago
@@ -185,12 +187,12 @@ class TestPipelinesHelper < Minitest::Test
     result = mermaid_definition_diagram(pipeline)
 
     assert_includes result, "graph TD"
-    assert_includes result, 'download("download"):::step'
-    assert_includes result, "download --> process"
-    assert_includes result, "classDef step"
-    assert_includes result, "end_node"
+    assert_includes result, 'n0("download"):::step'
+    assert_includes result, "n0 --> n1"
+    refute_includes result, "classDef step"
+    assert_includes result, "n2"
     assert_includes result, ":::terminal"
-    assert_includes result, "process --> end_node"
+    assert_includes result, "n1 --> n2"
   end
 
   # --- mermaid_diagram ---
@@ -202,8 +204,64 @@ class TestPipelinesHelper < Minitest::Test
     result = mermaid_diagram(pipeline)
 
     assert_includes result, "graph TD"
-    assert_includes result, 'download("download"):::succeeded'
-    assert_includes result, "classDef succeeded"
+    assert_includes result, 'n0("download"):::succeeded'
+    refute_includes result, "classDef succeeded"
+  end
+
+  def test_mermaid_uses_generated_ids_and_escapes_untrusted_labels
+    step = FakeStep.new(key: %(end_node"; x\ncontrol\u0000), coordination_status: "succeeded", id: 1)
+    pipeline = FakePipeline.new(steps: [step], dependencies: [])
+
+    result = mermaid_diagram(pipeline)
+
+    assert_includes result, 'n0("end_node#quot;; xcontrol"):::succeeded'
+    refute_includes result, 'end_node"; x'
+  end
+
+  def test_mermaid_generated_ids_do_not_collide_with_node_like_step_keys
+    first = FakeStep.new(key: "n1", coordination_status: "succeeded", id: "step-a")
+    second = FakeStep.new(key: "n0", coordination_status: "succeeded", id: "step-b")
+    dependency = FakeDependency.new(depends_on_step: first, step: second, step_id: "step-b")
+    builder = GoodPipeline::MermaidDiagramBuilder.new(
+      FakePipeline.new(steps: [first, second], dependencies: [dependency])
+    )
+
+    assert_equal({ "n1" => "n0", "n0" => "n1" }, builder.node_ids)
+    assert_equal "n2", builder.terminal_node_id
+    assert_includes builder.status_diagram, 'n0("n1"):::succeeded'
+    assert_includes builder.status_diagram, 'n1("n0"):::succeeded'
+    assert_includes builder.status_diagram, "n0 --> n1"
+  end
+
+  def test_mermaid_branch_arm_labels_are_reduced_to_safe_characters
+    branch = FakeStep.new(
+      key: "route", coordination_status: "succeeded", job_class: GoodPipeline::BRANCH_JOB_CLASS, id: "branch"
+    )
+    arm = FakeStep.new(
+      key: "deliver", coordination_status: "pending", branch_arm: %(yes|-->"\nnext:/!), id: "arm"
+    )
+    dependency = FakeDependency.new(depends_on_step: branch, step: arm, step_id: "arm")
+
+    graph = mermaid_diagram(FakePipeline.new(steps: [branch, arm], dependencies: [dependency]))
+
+    assert_includes graph, "n0 -->|yes--quotnext:| n1"
+    refute_includes graph, "|-->"
+    refute_includes graph, "next:/!"
+  end
+
+  def test_mermaid_disables_graphs_above_edge_cap
+    first = FakeStep.new(key: "first", id: 1)
+    second = FakeStep.new(key: "second", id: 2)
+    dependencies = Array.new(1_001) do
+      FakeDependency.new(depends_on_step: first, step: second, step_id: 2)
+    end
+    builder = GoodPipeline::MermaidDiagramBuilder.new(
+      FakePipeline.new(steps: [first, second], dependencies: dependencies)
+    )
+
+    assert_equal 1_001, builder.edge_count
+    assert_predicate builder, :overflow?
+    refute_predicate builder, :renderable?
   end
 
   # --- good_job_step_url ---

@@ -7,6 +7,8 @@ GoodPipeline::Engine.routes.draw do
     get :definitions, on: :collection
   end
 
+  patch :theme, to: "themes#update", as: :theme
+
   scope :frontend, controller: :frontends, defaults: { version: GoodPipeline::VERSION.tr(".", "-") } do
     get "static/:version/:id", action: :static, as: :frontend_static
   end

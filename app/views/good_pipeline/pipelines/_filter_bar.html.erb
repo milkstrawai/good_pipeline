@@ -1,0 +1,49 @@
+<%
+  filters = local_assigns[:filters] || @filters
+  status = filters.respond_to?(:status) ? filters.status : (params[:status].presence || "all")
+  time = filters.respond_to?(:time) ? filters.time : (params[:time].presence || "all")
+  query = filters.respond_to?(:query) ? filters.query : params[:q].to_s
+  base = request.query_parameters.except("page", "expanded")
+  status_counts = @status_counts || {}
+%>
+<div class="gp-filter-bar">
+  <form class="gp-search-form" action="<%= pipelines_path %>" method="get" role="search" data-gp-search-form>
+    <label class="gp-search" for="gp-search">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM11 11l3 3"></path></svg>
+      <span class="gp-sr-only">Search pipeline executions</span>
+      <input id="gp-search" type="search" name="q" value="<%= query %>" placeholder="search execution id or pipeline type…" autocomplete="off">
+    </label>
+  </form>
+
+  <div id="gp-filters">
+    <div class="gp-segment" role="group" aria-label="Status filter">
+      <span class="gp-segment-label">status</span>
+      <% %w[all running succeeded failed halted skipped].each do |value| %>
+        <%
+          href_params = base.merge("status" => value).except("page", "expanded")
+          count = value == "all" ? status_counts.values.sum : status_counts.fetch(value, 0)
+        %>
+        <%= link_to pipelines_path(href_params),
+                    class: "gp-segment-link #{'is-active' if status == value}",
+                    aria: ({ current: "page" } if status == value),
+                    data: { gp_partial_link: true, gp_segment: "status", gp_segment_value: value,
+                            gp_status_count: count } do %>
+          <span><%= value %></span><span class="gp-segment-count"><%= format_number(count) %></span>
+        <% end %>
+      <% end %>
+    </div>
+
+    <div class="gp-segment" role="group" aria-label="Time filter">
+      <span class="gp-segment-label">time</span>
+      <% %w[24h 7d 30d all].each do |value| %>
+        <% href_params = base.merge("time" => value).except("page", "expanded") %>
+        <%= link_to value, pipelines_path(href_params),
+                    class: "gp-segment-link #{'is-active' if time == value}",
+                    aria: ({ current: "page" } if time == value),
+                    data: { gp_partial_link: true, gp_segment: "time", gp_segment_value: value } %>
+      <% end %>
+    </div>
+
+    <%= link_to "clear", pipelines_path, class: "gp-filter-clear" %>
+  </div>
+</div>

@@ -18,10 +18,30 @@ module ActiveSupport
     self.use_transactional_tests = false
 
     teardown do
+      Rails.cache.clear
       ActiveRecord::Base.connection.truncate_tables(*ActiveRecord::Base.connection.tables)
     end
 
     private
+
+    def count_dashboard_queries(&block) # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
+      queries = []
+      ActiveRecord::Base.connection.clear_query_cache
+      callback = lambda do |_name, _started, _finished, _id, payload|
+        sql = payload[:sql].to_s
+        next if payload[:name].to_s == "SCHEMA"
+        next if payload[:cached] || payload[:name].to_s == "CACHE"
+        next if sql.match?(/\A\s*(?:BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE)\b/i)
+        next if sql.match?(/SHOW server_version_num/i)
+
+        queries << sql
+      end
+
+      ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+        ActiveRecord::Base.uncached(&block)
+      end
+      queries
+    end
 
     def rails_promise(&block)
       Concurrent::Promises.future do

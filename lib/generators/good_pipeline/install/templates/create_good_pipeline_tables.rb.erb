@@ -16,6 +16,15 @@ class CreateGoodPipelineTables < ActiveRecord::Migration[<%= ActiveRecord::Migra
     end
 
     add_index :good_pipeline_pipelines, :status
+    add_index :good_pipeline_pipelines, %i[type created_at id],
+              order: { created_at: :desc, id: :desc },
+              name: :index_gp_pipelines_on_type_created_at_id
+    add_index :good_pipeline_pipelines, %i[status created_at id],
+              order: { created_at: :desc, id: :desc },
+              name: :index_gp_pipelines_on_status_created_at_id
+    add_index :good_pipeline_pipelines, %i[created_at id],
+              order: { created_at: :desc, id: :desc },
+              name: :index_gp_pipelines_on_created_at_id
 
     create_table :good_pipeline_steps, id: :uuid do |t|
       t.references :pipeline, null: false, foreign_key: { to_table: :good_pipeline_pipelines }, type: :uuid, index: false
