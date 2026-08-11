@@ -1,0 +1,74 @@
+<%
+  kpis = local_assigns[:kpis] || @kpis
+  total = (local_assigns[:total] || @total || 0).to_i
+  get = lambda do |key, fallback = nil|
+    if kpis.respond_to?(key)
+      kpis.public_send(key)
+    elsif kpis.respond_to?(:[])
+      kpis[key] || kpis[key.to_s] || fallback
+    else
+      fallback
+    end
+  rescue NameError, IndexError, KeyError, TypeError
+    fallback
+  end
+  duration = lambda do |seconds|
+    next "—" if seconds.nil?
+    value = seconds.to_f.to_i
+    if value < 60
+      "#{value}s"
+    elsif value < 3_600
+      "#{value / 60}m #{value % 60}s"
+    else
+      "#{value / 3_600}h #{(value % 3_600) / 60}m"
+    end
+  end
+  failed = get.call(:failed_7d, 0).to_i
+  prior = get.call(:failed_prior_7d, 0).to_i
+  comparison = if prior.zero?
+    "—"
+  else
+    pct = ((failed - prior).to_f / prior * 100).round
+    "#{pct.positive? ? '+' : ''}#{pct}% vs prior"
+  end
+  sparkline_value = get.call(:sparkline)
+  sparkline_value = get.call(:buckets, []) if sparkline_value.nil?
+  sparkline = Array(sparkline_value).last(14)
+  sparkline = Array.new(14 - sparkline.length, 0) + sparkline if sparkline.length < 14
+  spark_max = [sparkline.map(&:to_i).max.to_i, 1].max
+%>
+<div class="gp-kpi-strip">
+  <div class="gp-kpi">
+    <div class="gp-kpi-label">filtered rows</div>
+    <div class="gp-kpi-value"><%= number_with_delimiter(total) %></div>
+    <div class="gp-kpi-sub">selected segment</div>
+  </div>
+  <div class="gp-kpi">
+    <div class="gp-kpi-label">running now</div>
+    <div class="gp-kpi-value gp-kpi-value--running"><%= number_with_delimiter(get.call(:running_now, 0)) %></div>
+    <div class="gp-kpi-sub"><%= number_with_delimiter(get.call(:enqueued_steps, 0)) %> enqueued steps</div>
+  </div>
+  <div class="gp-kpi">
+    <div class="gp-kpi-label">last 24h</div>
+    <div class="gp-kpi-value"><%= number_with_delimiter(get.call(:last_24h, 0)) %></div>
+    <div class="gp-kpi-sub">executions</div>
+  </div>
+  <div class="gp-kpi">
+    <div class="gp-kpi-label">failed · 7d</div>
+    <div class="gp-kpi-value gp-kpi-value--failed"><%= number_with_delimiter(failed) %></div>
+    <div class="gp-kpi-sub"><%= comparison %></div>
+  </div>
+  <div class="gp-kpi">
+    <div class="gp-kpi-label">p50 duration</div>
+    <div class="gp-kpi-value"><%= duration.call(get.call(:p50)) %></div>
+    <div class="gp-kpi-sub">p95 <%= duration.call(get.call(:p95)) %></div>
+  </div>
+  <div class="gp-kpi">
+    <div class="gp-kpi-label">executions · 14d</div>
+    <div class="gp-spark" aria-label="Execution counts for the last 14 days">
+      <% sparkline.each_with_index do |bucket, index| %>
+        <span class="gp-spark-bar" style="--gp-height:<%= (bucket.to_f / spark_max * 100).round(2) %>%" title="<%= bucket %> on day -<%= 13 - index %>"></span>
+      <% end %>
+    </div>
+  </div>
+</div>

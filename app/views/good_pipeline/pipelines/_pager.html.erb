@@ -1,0 +1,31 @@
+<%
+  page = local_assigns[:page] || @page || {}
+  get = ->(key, default) { page.respond_to?(key) ? page.public_send(key) : (page[key] || page[key.to_s] || default) }
+  current = get.call(:current, 1).to_i
+  last = [get.call(:last, 1).to_i, 1].max
+  per_page = get.call(:per_page, 25).to_i
+  total = get.call(:total, @total || 0).to_i
+  from = total.zero? ? 0 : ((current - 1) * per_page) + 1
+  to = [current * per_page, total].min
+  base = request.query_parameters.except("expanded", "page")
+%>
+<div class="gp-pager">
+  <span class="gp-pager-info"><span class="mono"><%= number_with_delimiter(from) %></span>–<span class="mono"><%= number_with_delimiter(to) %></span><span> of </span><span class="mono"><%= number_with_delimiter(total) %></span></span>
+  <span class="gp-pager-buttons">
+    <% if current <= 1 %>
+      <button class="gp-page-button" type="button" disabled aria-label="First page">«</button>
+      <button class="gp-page-button" type="button" disabled aria-label="Previous page">‹</button>
+    <% else %>
+      <%= link_to "«", pipelines_path(base.merge("page" => 1)), class: "gp-page-button", aria: { label: "First page" }, data: { gp_partial_link: true } %>
+      <%= link_to "‹", pipelines_path(base.merge("page" => current - 1)), class: "gp-page-button", aria: { label: "Previous page" }, data: { gp_partial_link: true } %>
+    <% end %>
+    <span class="gp-page-label">page <span class="mono"><%= current %></span> / <span class="mono"><%= last %></span></span>
+    <% if current >= last %>
+      <button class="gp-page-button" type="button" disabled aria-label="Next page">›</button>
+      <button class="gp-page-button" type="button" disabled aria-label="Last page">»</button>
+    <% else %>
+      <%= link_to "›", pipelines_path(base.merge("page" => current + 1)), class: "gp-page-button", aria: { label: "Next page" }, data: { gp_partial_link: true } %>
+      <%= link_to "»", pipelines_path(base.merge("page" => last)), class: "gp-page-button", aria: { label: "Last page" }, data: { gp_partial_link: true } %>
+    <% end %>
+  </span>
+</div>

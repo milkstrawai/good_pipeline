@@ -8,15 +8,16 @@ gemspec
 gem "irb"
 gem "rake", "~> 13.3", ">= 13.3.1"
 
-gem "minitest", "~> 6.0", ">= 6.0.2"
+gem "minitest", ">= 5.25"
 
 gem "rubocop", "~> 1.85", ">= 1.85.1"
 gem "rubocop-minitest", "~> 0.39.1"
 gem "rubocop-performance", "~> 1.26", ">= 1.26.1"
 
+gem "appraisal", "~> 2.5"
 gem "benchmark", "~> 0.5.0"
 gem "benchmark-ips", "~> 2.14"
 
 gem "pg", "~> 1.6", ">= 1.6.3"
 gem "puma", "~> 7.2"
-gem "rails", ">= 7.1"
+gem "rails", ">= 7.2"

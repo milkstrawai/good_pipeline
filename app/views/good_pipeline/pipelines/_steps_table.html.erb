@@ -1,33 +1,45 @@
-<header><h3>Steps</h3></header>
-<table>
-  <thead>
-    <tr>
-      <th>Key</th>
-      <th>Job Class</th>
-      <th>Status</th>
-      <th>Duration</th>
-      <th>Error</th>
-    </tr>
-  </thead>
-  <tbody>
-    <% pipeline.steps.each do |step| %>
-      <tr>
-        <td>
-          <% if (url = good_job_step_url(step)) %>
-            <%= link_to step.key, url, target: "_blank", rel: "noopener" %>
-          <% else %>
-            <%= step.key %>
-          <% end %>
-        </td>
-        <td><%= step.job_class %></td>
-        <td><%= status_badge(step.coordination_status) %></td>
-        <td><%= step.duration ? "#{step.duration.round(2)}s" : "\u2014" %></td>
-        <td>
-          <% if step.error_class %>
-            <small><%= step.error_class %>: <%= step.error_message %></small>
-          <% end %>
-        </td>
-      </tr>
-    <% end %>
-  </tbody>
-</table>
+<%
+  steps = Array(local_assigns[:steps] || pipeline.steps)
+  timings = local_assigns[:timings] || {}
+  status_meta = {
+    "pending" => ["○", "pending"], "running" => ["●", "running"], "enqueued" => ["●", "enqueued"],
+    "succeeded" => ["✓", "succeeded"], "failed" => ["✗", "failed"], "halted" => ["⊘", "halted"],
+    "skipped" => ["⊘", "skipped"], "skipped_by_branch" => ["⊘", "skipped·br"]
+  }.freeze
+  duration = lambda do |seconds|
+    next "—" if seconds.nil?
+    value = seconds.to_f.to_i
+    if value < 60 then "#{value}s"
+    elsif value < 3_600 then "#{value / 60}m #{value % 60}s"
+    else "#{value / 3_600}h #{(value % 3_600) / 60}m"
+    end
+  end
+  priority = { "failed" => 0, "halted" => 1, "enqueued" => 2, "running" => 2, "pending" => 3 }.freeze
+  ordered_steps = steps.length > 12 ? steps.sort_by { |step| [priority.fetch(step.coordination_status.to_s, 9), step.created_at, step.id.to_s] } : steps
+%>
+<h3 class="gp-section-heading">steps <span class="gp-heading-meta"><%= steps.length %> total</span></h3>
+<div class="gp-scroll-steps">
+  <table class="gp-compact-table">
+    <thead class="gp-sr-only"><tr><th>Key</th><th>Job class</th><th>Status</th><th>Duration</th><th>Error</th></tr></thead>
+    <tbody>
+      <% ordered_steps.each do |step| %>
+        <%
+          step_status = step.coordination_status.to_s
+          glyph, label = status_meta.fetch(step_status, ["○", step_status])
+          timing = timings[step.good_job_id] || timings[step.good_job_id.to_s] || timings[step.id] || timings[step.id.to_s]
+          performed_at, finished_at = timing.is_a?(Array) ? timing : [timing&.respond_to?(:performed_at) && timing.performed_at, timing&.respond_to?(:finished_at) && timing.finished_at]
+          step_duration = performed_at && finished_at ? finished_at - performed_at : nil
+          error_text = [step.error_class, step.error_message].compact.join(": ")
+          good_job_url = timing.present? ? good_job_step_url(step) : nil
+        %>
+        <tr>
+          <td class="gp-step-key"><% if good_job_url %><%= link_to step.key, good_job_url, target: "_blank", rel: "noopener" %><% else %><%= step.key %><% end %></td>
+          <td class="gp-job-class" title="<%= step.job_class %>"><%= step.job_class %></td>
+          <td><span class="gp-status gp-status--<%= step_status %>"><%= glyph %> <%= label %></span></td>
+          <td class="gp-step-duration"><%= duration.call(step_duration) %></td>
+          <td class="gp-error" title="<%= error_text %>"><%= error_text %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>

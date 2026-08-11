@@ -1,61 +1,94 @@
-<h1 class="page-title">Pipeline Definitions</h1>
-
-<% if @pipelines.any? %>
-  <div class="definitions-layout">
-    <div class="definitions-sidebar">
-      <% @pipelines.each_with_index do |pipeline, index| %>
-        <button type="button" class="definition-item <%= 'active' if index.zero? %>" data-pipeline="<%= pipeline.type %>">
-          <span class="definition-item-name"><%= humanized_type(pipeline.type) %></span>
-          <span class="definition-item-meta"><%= pipeline.steps.size %> steps</span>
-        </button>
-      <% end %>
-    </div>
-
-    <div class="definitions-detail">
-      <% @pipelines.each_with_index do |pipeline, index| %>
-        <div class="definition-panel <%= 'active' if index.zero? %>" data-pipeline="<%= pipeline.type %>">
-          <article>
-            <header class="definition-header">
-              <div>
-                <h2><%= humanized_type(pipeline.type) %></h2>
-                <span class="definition-subtitle">on failure: <%= pipeline.on_failure_strategy %></span>
-              </div>
-              <%= link_to "View Executions \u2192", pipelines_path(pipeline_type: pipeline.type), class: "definition-executions-link" %>
-            </header>
-            <% if pipeline.steps.any? %>
-              <div class="diagram-container">
-                <div class="diagram-toolbar">
-                  <button type="button" class="diagram-btn" data-action="zoom-in" title="Zoom in">+</button>
-                  <button type="button" class="diagram-btn" data-action="zoom-out" title="Zoom out">&minus;</button>
-                  <button type="button" class="diagram-btn" data-action="zoom-reset" title="Reset zoom">Reset</button>
-                  <button type="button" class="diagram-btn" data-action="fullscreen" title="Fullscreen">&#x26F6;</button>
+<%
+  pipelines = Array(@pipelines)
+  run_counts = @run_counts || {}
+  definition_stages = @definition_stages_by_pipeline || @definition_stages || {}
+  get_count = ->(type) { (run_counts[type] || run_counts[type.to_s] || 0).to_i }
+  sidebar_entries = pipelines.map do |pipeline|
+    steps = pipeline.steps.to_a
+    {
+      type: pipeline.type,
+      id: pipeline.id,
+      on_failure_strategy: pipeline.on_failure_strategy,
+      run_count: get_count.call(pipeline.type),
+      step_count: steps.length,
+      has_branch: steps.any? { |step| step.respond_to?(:branch_step?) ? step.branch_step? : step.job_class == GoodPipeline::BRANCH_JOB_CLASS }
+    }
+  end
+  first = pipelines.first
+  first_short = first && (respond_to?(:short_type) ? short_type(first.type) : humanized_type(first.type).sub(/\s*Pipeline\z/, ""))
+  first_meta = first && "#{first.steps.size} steps · #{first.on_failure_strategy}"
+%>
+<div class="gp-app gp-app--definitions">
+  <%= render "sidebar", entries: sidebar_entries, mode: :definitions %>
+  <main class="gp-main">
+    <%= render "topbar", section: "definitions", active: first_short, meta: first_meta, connection: @connection_info, now: @now %>
+    <div class="gp-definitions-scroll">
+      <% if pipelines.any? %>
+        <div class="gp-definitions-content">
+          <% pipelines.each_with_index do |pipeline, index| %>
+            <%
+              steps = pipeline.steps.to_a.sort_by { |step| [step.created_at, step.id.to_s] }
+              dependencies = pipeline.dependencies.to_a
+              stages = definition_stages[pipeline.id] || definition_stages[pipeline.id.to_s] || definition_stages[pipeline.type] || []
+              graph = dependencies.length > 1_000 ? "" : mermaid_definition_diagram(pipeline)
+              has_branch = steps.any? { |step| step.respond_to?(:branch_step?) ? step.branch_step? : step.job_class == GoodPipeline::BRANCH_JOB_CLASS }
+              keys_by_id = steps.to_h { |step| [step.id, step.key] }
+              upstream = Hash.new { |hash, key| hash[key] = [] }
+              dependencies.each do |dependency|
+                label = keys_by_id[dependency.depends_on_step_id]
+                downstream = steps.find { |step| step.id == dependency.step_id }
+                if downstream&.respond_to?(:branch_arm) && downstream.branch_arm.present?
+                  label = "#{label}(#{downstream.branch_arm})"
+                end
+                upstream[dependency.step_id] << label
+              end
+            %>
+            <div id="gp-definition-<%= index %>" class="gp-definition-panel <%= 'is-active' if index.zero? %>" data-pipeline="<%= pipeline.type %>">
+              <section class="gp-card">
+                <div class="gp-definition-summary">
+                  <span class="gp-definition-title"><%= humanized_type(pipeline.type) %></span>
+                  <span class="gp-strategy gp-strategy--<%= pipeline.on_failure_strategy %>">on_failure: <%= pipeline.on_failure_strategy %></span>
+                  <% if has_branch %><span class="gp-sidebar-tag">conditional branch</span><% end %>
+                  <%= link_to "view executions ↗", pipelines_path(pipeline_type: pipeline.type), class: "gp-action gp-action--ghost" %>
                 </div>
-                <div class="diagram-viewport">
-                  <div class="diagram-canvas">
-                    <pre class="mermaid"><%= raw mermaid_definition_diagram(pipeline) %></pre>
-                  </div>
+                <div class="gp-definition-metrics">
+                  <span><b>steps</b> <%= number_with_delimiter(steps.length) %></span>
+                  <span><b>edges</b> <%= number_with_delimiter(dependencies.length) %></span>
+                  <span><b>runs</b> <%= number_with_delimiter(get_count.call(pipeline.type)) %></span>
+                  <span><b>class</b> <%= pipeline.type %></span>
                 </div>
-              </div>
-            <% else %>
-              <p class="empty-state">No steps defined.</p>
-            <% end %>
-          </article>
+              </section>
+
+              <%= render "diagram", pipeline: pipeline, graph: graph, steps: steps,
+                         edge_count: dependencies.length, stages: stages, definition: true %>
+
+              <section class="gp-card">
+                <h3 class="gp-section-heading">steps <span class="gp-heading-meta"><%= steps.length %> declared</span></h3>
+                <div class="gp-definition-list-overflow">
+                  <table class="gp-compact-table">
+                    <tbody>
+                      <% steps.each do |step| %>
+                        <% after = upstream[step.id] %>
+                        <tr>
+                          <td class="gp-step-key" style="width:180px"><%= step.key %></td>
+                          <td class="gp-job-class" title="<%= step.job_class %>"><%= step.job_class %></td>
+                          <td class="gp-step-duration" title="<%= after.join(', ') %>"><%= after.any? ? "after: #{after.first(3).join(', ')}#{after.length > 3 ? " +#{after.length - 3}" : ''}" : "root" %></td>
+                        </tr>
+                      <% end %>
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+          <% end %>
+        </div>
+      <% else %>
+        <div class="gp-table-empty">
+          <div class="gp-empty-mark">∅</div>
+          <div class="gp-empty-title">no pipeline definitions yet</div>
+          <div class="gp-empty-sub">Run a pipeline to add its definition to this catalog.</div>
         </div>
       <% end %>
     </div>
-  </div>
-
-  <script>
-    document.querySelectorAll('.definition-item').forEach(function(button) {
-      button.addEventListener('click', function() {
-        var type = this.dataset.pipeline;
-        document.querySelectorAll('.definition-item').forEach(function(b) { b.classList.remove('active'); });
-        document.querySelectorAll('.definition-panel').forEach(function(p) { p.classList.remove('active'); });
-        this.classList.add('active');
-        document.querySelector('.definition-panel[data-pipeline="' + type + '"]').classList.add('active');
-      });
-    });
-  </script>
-<% else %>
-  <p class="empty-state">No pipeline executions found yet. Run a pipeline to see its definition here.</p>
-<% end %>
+  </main>
+</div>

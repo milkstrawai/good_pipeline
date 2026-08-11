@@ -1,0 +1,27 @@
+# frozen_string_literal: true
+
+# Concurrent index creation can leave an invalid index if it is interrupted.
+# PostgreSQL will skip an invalid index when `if_not_exists` is used. Check and
+# remove invalid indexes before rerunning this migration:
+#
+#   SELECT c.relname FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid
+#   WHERE NOT i.indisvalid AND c.relname LIKE 'index_gp_pipelines%';
+#   -- DROP INDEX CONCURRENTLY <name>;
+class AddGoodPipelineDashboardIndexes < ActiveRecord::Migration[<%= ActiveRecord::Migration.current_version %>]
+  disable_ddl_transaction!
+
+  def change
+    add_index :good_pipeline_pipelines, %i[type created_at id],
+              order: { created_at: :desc, id: :desc },
+              name: :index_gp_pipelines_on_type_created_at_id,
+              algorithm: :concurrently, if_not_exists: true
+    add_index :good_pipeline_pipelines, %i[status created_at id],
+              order: { created_at: :desc, id: :desc },
+              name: :index_gp_pipelines_on_status_created_at_id,
+              algorithm: :concurrently, if_not_exists: true
+    add_index :good_pipeline_pipelines, %i[created_at id],
+              order: { created_at: :desc, id: :desc },
+              name: :index_gp_pipelines_on_created_at_id,
+              algorithm: :concurrently, if_not_exists: true
+  end
+end

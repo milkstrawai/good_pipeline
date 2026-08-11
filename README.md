@@ -7,9 +7,9 @@ Define multi-step workflows as directed acyclic graphs — not linear chains. St
 ## Requirements
 
 - Ruby >= 3.2
-- Rails >= 7.1
+- Rails >= 7.2
 - PostgreSQL
-- GoodJob >= 3.10 with `preserve_job_records = true`
+- GoodJob >= 4.14 with `preserve_job_records = true`
 
 ## Installation
 
@@ -25,6 +25,15 @@ Then install the migrations:
 bin/rails generate good_pipeline:install
 bin/rails db:migrate
 ```
+
+When upgrading an existing application to GoodPipeline 0.5, add the dashboard indexes before serving a large execution history:
+
+```bash
+bin/rails generate good_pipeline:upgrade
+bin/rails db:migrate
+```
+
+The upgrade generator is idempotent: if its dashboard-index migration already exists, a second invocation reports a no-op instead of creating another file.
 
 GoodPipeline requires GoodJob to preserve job records. Add this to your GoodJob configuration:
 
@@ -216,9 +225,14 @@ mount GoodPipeline::Engine => "/good_pipeline"
 
 The dashboard provides:
 
-- Pipeline Executions: filterable list with status tabs and pipeline type dropdown
-- Pipeline Details: steps table, DAG visualization, chain links, error info
-- Pipeline Definitions: catalog of all pipeline types with their DAG structure
+- Pipeline executions with composable type, status, time, and text filters, offset pagination, live status counts, and expandable step timelines
+- Operational KPIs for the selected pipeline type, including current activity, fixed-window failure and duration statistics, and a 14-day sparkline
+- Pipeline details with GoodJob links, step errors, chain links, a stage timeline, and an interactive DAG
+- A definition catalog with declared dependencies and structural DAG or stage views
+
+Dark is the default theme in 0.5. The topbar toggle persists a light or dark preference in a permanent same-site cookie. Dashboard styles and JavaScript ship with the gem; Mermaid and web fonts are loaded from their CDNs, so there is no application-side asset build step.
+
+Large executions remain readable: rows with more than 12 steps use an aggregate status bar, and DAGs with more than 60 steps initially show a stage view. A full graph remains available up to Mermaid's 1,000-edge safety limit. Above that limit, the stage view stays available and full rendering is disabled explicitly.
 
 ### Pipeline Executions
 
@@ -232,11 +246,11 @@ The dashboard provides:
 
 ![Pipeline Definitions](docs/screenshots/definitions.png)
 
-No build step. Uses Pico CSS and Mermaid.js from CDN.
-
 ## Cleanup
 
 GoodPipeline automatically cleans up old terminal pipelines when GoodJob runs its own cleanup cycle. No configuration needed, it uses GoodJob's retention period (default 14 days).
+
+Pending and running pipelines are intentionally retained. GoodJob may still remove old job rows belonging to a long-running pipeline, so timing for those steps appears as `—` in the dashboard after the retention window; the pipeline and step coordination records remain available.
 
 To configure the retention period, set GoodJob's option:
 

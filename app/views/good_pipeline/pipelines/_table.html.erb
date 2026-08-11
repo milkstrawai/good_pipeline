@@ -1,0 +1,33 @@
+<%
+  pipelines = Array(local_assigns[:pipelines] || @pipelines)
+  filters = local_assigns[:filters] || @filters
+  steps_by_pipeline = local_assigns[:steps_by_pipeline] || @steps_by_pipeline || {}
+%>
+<div class="gp-table-wrap">
+  <table class="gp-table">
+    <thead>
+      <tr>
+        <th class="gp-th-expand"><span class="gp-sr-only">Expand</span></th>
+        <th class="gp-th-started">started</th>
+        <th>execution</th>
+        <th class="gp-th-steps">steps</th>
+        <th class="gp-th-status">status</th>
+        <th class="gp-th-duration">duration</th>
+        <th>params</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% pipelines.each do |pipeline| %>
+        <% steps = steps_by_pipeline[pipeline.id] || steps_by_pipeline[pipeline.id.to_s] || [] %>
+        <%= render "row", pipeline: pipeline, steps: steps, filters: filters %>
+      <% end %>
+    </tbody>
+  </table>
+  <% if pipelines.empty? %>
+    <div class="gp-table-empty">
+      <div class="gp-empty-mark">∅</div>
+      <div class="gp-empty-title">no executions match these filters</div>
+      <div class="gp-empty-sub">good_pipeline_pipelines returned 0 rows for the active query</div>
+    </div>
+  <% end %>
+</div>

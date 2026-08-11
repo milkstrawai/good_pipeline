@@ -1,0 +1,54 @@
+<%
+  section = local_assigns.fetch(:section, "executions")
+  active = local_assigns[:active]
+  meta = local_assigns[:meta]
+  back = local_assigns[:back]
+  connection = local_assigns[:connection] || @connection_info
+  now = local_assigns[:now] || @now || Time.current
+  value_for = lambda do |object, key|
+    if object.respond_to?(key)
+      object.public_send(key)
+    elsif object.respond_to?(:[])
+      object[key] || object[key.to_s]
+    end
+  rescue NameError, IndexError, KeyError, TypeError
+    nil
+  end
+  database = value_for.call(connection, :database) || value_for.call(connection, :database_name) || "database"
+  pg_version = value_for.call(connection, :version) || value_for.call(connection, :server_version)
+  theme = %w[dark light].include?(cookies[:good_pipeline_theme]) ? cookies[:good_pipeline_theme] : "dark"
+%>
+<header class="gp-topbar">
+  <div class="gp-crumbs">
+    <% if back %>
+      <%= link_to "← #{back[:label]}", back[:href], class: "gp-back" %>
+    <% end %>
+    <span class="gp-crumb">good_pipeline</span>
+    <span class="gp-crumb-sep">/</span>
+    <% if section == "executions" %>
+      <%= link_to "executions", pipelines_path, class: "gp-crumb" %>
+      <% unless back %>
+        <span class="gp-crumb-sep">/</span>
+        <%= link_to "definitions", definitions_pipelines_path, class: "gp-crumb", title: "Pipeline definitions catalog" %>
+      <% end %>
+    <% else %>
+      <%= link_to "definitions", definitions_pipelines_path, class: "gp-crumb" %>
+    <% end %>
+    <% if active.present? %>
+      <span class="gp-crumb-sep">/</span>
+      <span class="gp-crumb gp-crumb--active" data-gp-active-crumb><%= active %></span>
+    <% end %>
+    <% if meta.present? %>
+      <span class="gp-crumb-meta" data-gp-active-meta><%= meta %></span>
+    <% end %>
+  </div>
+  <div class="gp-topbar-right">
+    <button class="gp-theme-btn" type="button" title="Toggle theme" aria-label="Toggle color theme" data-gp-theme-toggle><%= theme == "dark" ? "◐" : "◑" %></button>
+    <span class="gp-connection" title="Dashboard database connection">
+      <span class="gp-connection-dot"></span>
+      <span><%= database %></span>
+      <% if pg_version.present? %><span class="gp-connection-version"><%= pg_version %></span><% end %>
+    </span>
+    <time class="gp-clock" datetime="<%= now.utc.iso8601 %>"><%= now.utc.strftime("%Y-%m-%d %H:%M:%SZ") %></time>
+  </div>
+</header>

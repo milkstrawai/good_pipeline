@@ -1,43 +1,32 @@
-<h1 class="page-title">Pipeline Executions</h1>
-
-<div class="filters-row">
-  <ul class="status-tabs">
-  <li><%= link_to "All (#{@total_count})", pipelines_path(pipeline_type: @pipeline_type), class: ("active" if @status.nil?) %></li>
-  <% %w[running succeeded failed halted skipped].each do |status| %>
-    <li><%= link_to "#{status.titleize} (#{@status_counts[status] || 0})", pipelines_path(status: status, pipeline_type: @pipeline_type), class: ("active" if @status == status), data: { status: status } %></li>
-  <% end %>
-  </ul>
-  <select class="pipeline-type-select" onchange="window.location = this.value;">
-    <option value="<%= pipelines_path(status: @status) %>" <%= "selected" if @pipeline_type.nil? %>>All Pipelines</option>
-    <% @pipeline_types.each do |pipeline_type| %>
-      <option value="<%= pipelines_path(status: @status, pipeline_type: pipeline_type) %>" <%= "selected" if @pipeline_type == pipeline_type %>>
-        <%= humanized_type(pipeline_type) %>
-      </option>
-    <% end %>
-  </select>
+<%
+  filters = @filters
+  selected_type = filters.respond_to?(:pipeline_type) ? filters.pipeline_type : params[:pipeline_type].presence
+  selected_short = selected_type.present? ? (respond_to?(:short_type) ? short_type(selected_type) : humanized_type(selected_type).sub(/\s*Pipeline\z/, "")) : nil
+  selected_entry = Array(@sidebar_entries).find do |entry|
+    entry_type = entry.respond_to?(:type) ? entry.type : (entry[:type] || entry["type"])
+    entry_type == selected_type
+  end
+  selected_steps = if selected_entry
+    selected_entry.respond_to?(:step_count) ? selected_entry.step_count : (selected_entry[:step_count] || selected_entry["step_count"])
+  end
+  selected_strategy = if selected_entry
+    selected_entry.respond_to?(:on_failure_strategy) ? selected_entry.on_failure_strategy : (selected_entry[:on_failure_strategy] || selected_entry["on_failure_strategy"] || selected_entry[:strategy] || selected_entry["strategy"])
+  end
+  crumb_meta = selected_type.present? ? [selected_steps && "#{selected_steps} steps", selected_strategy].compact.join(" · ") : "all pipeline types"
+%>
+<div class="gp-app gp-app--dashboard">
+  <%= render "sidebar", entries: @sidebar_entries, filters: filters %>
+  <main class="gp-main">
+    <%= render "topbar", section: "executions", active: selected_short, meta: crumb_meta, connection: @connection_info, now: @now %>
+    <div id="gp-dashboard">
+      <div id="gp-kpi">
+        <%= render "kpi_strip", kpis: @kpis, total: @total %>
+      </div>
+      <%= render "filter_bar", filters: filters %>
+      <div id="gp-table">
+        <%= render "table", pipelines: @pipelines, filters: filters, steps_by_pipeline: @steps_by_pipeline %>
+        <%= render "pager", page: @page %>
+      </div>
+    </div>
+  </main>
 </div>
-
-<% if @pipelines.any? %>
-  <div class="table-card">
-    <table>
-      <thead>
-        <tr>
-          <th>Execution ID</th>
-          <th>Pipeline Name</th>
-          <th>Status</th>
-          <th>Start Time</th>
-          <th>Duration</th>
-        </tr>
-      </thead>
-      <tbody>
-        <% @pipelines.each do |pipeline| %>
-          <%= render "pipeline_row", pipeline: pipeline %>
-        <% end %>
-      </tbody>
-    </table>
-  </div>
-
-  <%= render "pagination" %>
-<% else %>
-  <p class="empty-state">No pipelines found.</p>
-<% end %>

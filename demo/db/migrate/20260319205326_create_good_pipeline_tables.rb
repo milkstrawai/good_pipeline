@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-class CreateGoodPipelineTables < ActiveRecord::Migration[8.1]
+class CreateGoodPipelineTables < ActiveRecord::Migration[7.2]
   def change
     # Uncomment for Postgres v12 or earlier to enable gen_random_uuid() support
     # enable_extension 'pgcrypto'

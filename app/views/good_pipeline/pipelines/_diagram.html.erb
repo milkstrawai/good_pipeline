@@ -1,0 +1,101 @@
+<%
+  pipeline = local_assigns[:pipeline]
+  stages = Array(local_assigns[:stages])
+  definition = !!local_assigns[:definition]
+  edge_count = (local_assigns[:edge_count] || (respond_to?(:mermaid_edge_count) ? mermaid_edge_count(pipeline) : pipeline.dependencies.size)).to_i
+  step_count = Array(local_assigns[:steps] || pipeline.steps).size
+  overflow = edge_count > 1_000 || !!local_assigns[:overflow]
+  graph = if overflow
+    ""
+  elsif local_assigns.key?(:graph)
+    local_assigns[:graph].to_s
+  else
+    definition ? mermaid_definition_diagram(pipeline) : mermaid_diagram(pipeline)
+  end
+  large = step_count > 60
+  stage_first = large || overflow
+  max_stage_count = [stages.map { |stage| stage.respond_to?(:n) ? stage.n.to_i : (stage[:n] || stage["n"] || 1).to_i }.max.to_i, 1].max
+  get = lambda do |object, key|
+    if object.respond_to?(key)
+      object.public_send(key)
+    elsif object.respond_to?(:[])
+      object[key] || object[key.to_s]
+    end
+  rescue NameError, IndexError, KeyError, TypeError
+    nil
+  end
+%>
+<section class="gp-card">
+  <h3 class="gp-section-heading">
+    <span>dag</span>
+    <span><%= step_count %> steps · <%= edge_count %> edges</span>
+    <span class="gp-diagram-toolbar">
+      <% if overflow %>
+        <button class="gp-diagram-btn" type="button" disabled title="Full graph disabled because <%= edge_count %> edges exceeds Mermaid's 1,000-edge safety limit">render full graph</button>
+      <% elsif large %>
+        <button class="gp-diagram-btn" type="button" data-gp-graph-toggle aria-pressed="false">render full graph</button>
+      <% end %>
+      <button class="gp-diagram-btn gp-diagram-btn--icon" type="button" data-gp-diagram-action="in" title="Zoom in" aria-label="Zoom in">+</button>
+      <button class="gp-diagram-btn gp-diagram-btn--icon" type="button" data-gp-diagram-action="out" title="Zoom out" aria-label="Zoom out">−</button>
+      <button class="gp-diagram-btn" type="button" data-gp-diagram-action="reset" title="Reset zoom">reset</button>
+      <button class="gp-diagram-btn gp-diagram-btn--icon" type="button" data-gp-diagram-action="fullscreen" title="Fullscreen" aria-label="Fullscreen">⛶</button>
+    </span>
+  </h3>
+  <% if overflow %>
+    <p class="gp-edge-warning">Full graph disabled: <%= number_with_delimiter(edge_count) %> edges exceeds Mermaid’s 1,000-edge safety limit. The stage view remains available.</p>
+  <% end %>
+
+  <div class="gp-stage-panel" <%= "hidden" unless stage_first %>>
+    <% if definition %>
+      <div class="gp-timeline">
+        <% stages.each do |stage| %>
+          <% role = (get.call(stage, :role) || :step).to_s; count = (get.call(stage, :n) || 1).to_i; jobs = Array(get.call(stage, :job_classes)); label = get.call(stage, :label) || get.call(stage, :stage) %>
+          <div class="gp-lane">
+            <span class="gp-stage-level">L<%= get.call(stage, :level) || 0 %></span>
+            <span class="gp-lane-label" title="<%= label %>"><%= label %></span>
+            <span class="gp-stage-role gp-stage-role--<%= role %>" style="--gp-width:<%= (count.to_f / max_stage_count * 60).round(2) %>%"></span>
+            <span class="gp-lane-note" title="<%= jobs.join(', ') %>"><%= count > 1 ? "#{count} parallel shards" : (jobs.first || role) %></span>
+          </div>
+        <% end %>
+      </div>
+    <% else %>
+      <div class="gp-timeline">
+        <% status_order = %w[succeeded failed halted enqueued running pending skipped skipped_by_branch] %>
+        <% stages.each do |stage| %>
+          <%
+            counts = get.call(stage, :counts) || {}
+            count = [(get.call(stage, :n) || counts.values.sum).to_i, 1].max
+            label = get.call(stage, :label) || get.call(stage, :stage)
+            notes = status_order.filter_map do |stage_status|
+              value = counts[stage_status] || counts[stage_status.to_sym]
+              "#{value} #{stage_status.sub('_by_branch', '·br')}" if value.to_i.positive?
+            end
+          %>
+          <div class="gp-lane">
+            <span class="gp-stage-level">L<%= get.call(stage, :level) || 0 %></span>
+            <span class="gp-lane-label" title="<%= label %>"><%= label %></span>
+            <span class="gp-stage-stack">
+              <% status_order.each do |stage_status| %>
+                <% value = (counts[stage_status] || counts[stage_status.to_sym]).to_i; next if value.zero?; color_status = stage_status == "enqueued" ? "running" : stage_status.start_with?("skipped") ? "skipped" : stage_status; opacity = stage_status == "pending" ? 0.3 : (stage_status.start_with?("skipped") ? 0.45 : 1) %>
+                <span style="--gp-width:<%= (value.to_f / count * 100).round(2) %>%;--gp-status:var(--st-<%= color_status %>);--gp-opacity:<%= opacity %>" title="<%= value %> <%= stage_status %>"></span>
+              <% end %>
+            </span>
+            <span class="gp-lane-note" title="<%= notes.join(', ') %>"><%= notes.join(", ") %></span>
+          </div>
+        <% end %>
+      </div>
+    <% end %>
+  </div>
+
+  <div class="gp-graph-panel" <%= "hidden" if stage_first %>>
+    <div class="gp-diagram-container"
+         <% unless overflow %>data-graph="<%= h(graph.to_json) %>"<% end %>
+         data-graph-kind="<%= definition ? 'definition' : 'execution' %>"
+         data-edge-count="<%= edge_count %>">
+      <div class="gp-diagram-viewport">
+        <div class="gp-diagram-canvas"><div class="gp-diagram-fallback">Rendering graph…</div></div>
+      </div>
+      <noscript><div class="gp-diagram-fallback">JavaScript is required to render this pipeline graph.</div></noscript>
+    </div>
+  </div>
+</section>
