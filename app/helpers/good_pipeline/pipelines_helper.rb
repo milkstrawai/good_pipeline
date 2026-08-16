@@ -56,6 +56,16 @@ module GoodPipeline
       humanized_type(pipeline_type).sub(/\s*Pipeline\z/, "")
     end
 
+    # Re-running always starts a new execution, and the caveats below are
+    # invisible in the dashboard, so they are stated where the operator commits
+    # to the action.
+    def rerun_confirmation(pipeline)
+      "Re-run #{short_type(pipeline.type)} from the start?\n\n" \
+        "This starts a new execution and leaves this one as history. " \
+        "Every step runs again, including steps that already succeeded. " \
+        "Pipelines chained onto the original with .then are not recreated."
+    end
+
     def relative_time_tag(datetime)
       return "" unless datetime
 

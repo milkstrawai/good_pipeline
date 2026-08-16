@@ -285,6 +285,22 @@ html[data-gp-theme] body {
 .gp-action--danger { border-color:color-mix(in oklab,var(--st-failed) 40%,var(--border)); color:var(--st-failed); background:transparent; }
 .gp-action--ghost { border-color:var(--border); color:var(--fg-2); background:transparent; }
 .gp-action:disabled { color:var(--fg-4); border-color:var(--border); }
+/* button_to wraps its button in a form; `contents` keeps the button itself as
+   the flex item of .gp-actions so it lines up with plain links and buttons. */
+.gp-action-form { display:contents; }
+
+/* Flash */
+.gp-flash {
+  position:fixed; z-index:20; top:10px; left:50%; transform:translateX(-50%); max-width:min(560px,calc(100vw - 32px));
+  display:flex; align-items:baseline; gap:10px;
+  padding:6px 12px; border:1px solid var(--border-strong); border-radius:3px; background:var(--bg-2);
+  color:var(--fg-1); font:11px "JetBrains Mono",monospace; box-shadow:0 4px 14px rgb(0 0 0 / .35);
+  transition:opacity .2s ease;
+}
+.gp-flash--alert { border-color:color-mix(in oklab,var(--st-failed) 40%,var(--border)); color:var(--st-failed); }
+.gp-flash--closing { opacity:0; }
+.gp-flash-close { flex:none; border:0; padding:0; background:none; color:inherit; font:inherit; cursor:pointer; opacity:.7; }
+.gp-flash-close:hover { opacity:1; }
 
 /* Timeline */
 .gp-timeline { display:flex; flex-direction:column; gap:3px; max-height:260px; overflow-y:auto; }

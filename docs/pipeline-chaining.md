@@ -92,7 +92,7 @@ Pipeline chaining is a first-class primitive — upstream/downstream relationshi
 5. If all upstreams succeeded, the downstream pipeline starts (root steps are enqueued)
 6. If any upstream fails, halts, or is skipped, the downstream pipeline is set to `skipped`
 
-The chain coordinator uses the **same atomic row-locking pattern** (`FOR UPDATE SKIP LOCKED`) as the step-level coordinator to prevent double-start races. This means `.then` is safe to call at any time — even after the upstream has already completed.
+The chain coordinator locks the downstream pipeline row with a **blocking `FOR UPDATE`** to prevent double-start races. Blocking rather than skipping is deliberate: two upstreams settling at once must not both decline to start their shared downstream, which would strand it `pending` forever. `.then` registers a downstream and all of its incoming edges in one transaction, so a concurrent propagation can never evaluate a partially registered fan-in — which is what makes `.then` safe to call at any time, even after the upstream has already completed.
 
 ## Failure propagation
 

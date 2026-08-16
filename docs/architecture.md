@@ -35,7 +35,7 @@ Internal architecture for contributors and anyone who wants to understand how th
 ┌─────────────────────────▼───────────────────────────────────┐
 │                  Coordination Layer                          │
 │    Coordinator owns ALL coordination_status transitions     │
-│    Atomic row-locked transitions (FOR UPDATE SKIP LOCKED)   │
+│    Atomic row-locked transitions (SELECT ... FOR UPDATE)    │
 │    Explicit transaction boundaries per atomic unit          │
 │    recompute_pipeline_status is the sole derivation path    │
 └─────────────────────────┬───────────────────────────────────┘
@@ -119,9 +119,11 @@ The `Coordinator` class is the sole owner of all `coordination_status` transitio
 2. **Halt propagation** — sets `halt_triggered` and skips all pending steps (if `:halt` strategy)
 3. **Downstream unblocking** — checks and enqueues each downstream step independently via `try_enqueue_step`, which acquires a per-step row lock
 
-These three units are intentionally not wrapped in a single outer transaction. Holding locks across multiple downstream step enqueues would be a bottleneck under high parallelism.
+These three units share **one transaction**, opened after locking the pipeline row `FOR UPDATE`. The step outcome is claimed only while the step is still `enqueued` and owned by the reporting batch, so a duplicate or stale callback delivery is ignored rather than allowed to overwrite a newer attempt, and halt policy commits atomically with the outcome that triggered it. The cost is that the pipeline row is held for the duration of the downstream fan-out.
 
-After the three units complete, `complete_step` calls `recompute_pipeline_status` to derive the pipeline's terminal state from the current database state.
+After the transaction commits, `complete_step` calls `recompute_pipeline_status` to derive the pipeline's terminal state from the current database state — unless the fan-out enqueued work, in which case the pipeline is not terminal and the eventual last completion settles it.
+
+An unclaimed callback recomputes too. If the process crashes between the outcome commit and the settlement recompute, the outcome is durable but the pipeline is still `running`; GoodJob's redelivery of `StepFinishedJob` finds nothing to claim, and its recompute is the only actor left to settle the row. Because recompute is idempotent, genuinely stale deliveries still change nothing.
 
 ## Terminal state derivation
 
@@ -130,11 +132,14 @@ Pipeline terminal status is **never inferred from a single event**. It is always
 | Condition | Derived status |
 |---|---|
 | Any step is `pending` or `enqueued` | Not terminal — still running |
+| Cancelled by an operator (`canceled_at` set) | `halted` |
 | All steps terminal, none `failed` | `succeeded` |
 | All steps terminal, at least one `failed`, `halt_triggered` is `true` | `halted` |
 | All steps terminal, at least one `failed`, `halt_triggered` is `false` | `failed` |
 
-This function is safe to call from multiple code paths (coordinator, batch reconciliation) because it is idempotent on terminal pipelines.
+Settlement is serialized on the pipeline row: `recompute_pipeline_status` re-reads the pipeline under `FOR UPDATE`, re-checks for active steps, and performs the terminal transition and callback reservation while holding the lock. This makes it safe to call from any code path with any (possibly stale) record — the caller's in-memory copy never decides the outcome, so a stale instance can neither force a settlement the locked row does not warrant nor suppress one it does.
+
+Chain propagation deliberately runs **after** the settlement transaction commits. While a settlement holds its uncommitted terminal status, a concurrently settling sibling upstream could read it as still running and decline to start a shared downstream; once committed, the status is durably visible to whichever propagation locks the downstream next.
 
 ## Enqueue transaction contract
 
@@ -148,13 +153,13 @@ If the transaction rolls back, both the step status revert and the GoodJob recor
 
 If two upstream steps of a shared downstream complete simultaneously, both coordinator invocations may try to enqueue the downstream step. GoodPipeline prevents this with:
 
-1. **`FOR UPDATE SKIP LOCKED`** — one coordinator acquires the row lock; the other skips silently
+1. **`FOR UPDATE` on the step row** — one coordinator acquires the lock; the other blocks, then observes the resolved state
 2. **`good_job_id` null guard** — a non-null `good_job_id` is conclusive proof the step was already enqueued (only valid inside a row lock)
 3. **Status guard** — the coordinator checks `coordination_status == "pending"` inside the lock
 
 ### Callback exactly-once
 
-`dispatch_callbacks_once` uses a `FOR UPDATE` locked transaction with the `callbacks_dispatched_at` timestamp as a guard. Even if `recompute_pipeline_status` is called concurrently from multiple code paths, the callback bundle fires exactly once.
+`dispatch_callbacks_once` runs inside the same `FOR UPDATE` locked transaction that writes the terminal status, with the `callbacks_dispatched_at` timestamp as a guard. Even if `recompute_pipeline_status` is called concurrently from multiple code paths, the callback bundle fires exactly once.
 
 ## Retry model
 

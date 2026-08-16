@@ -22,11 +22,30 @@ module GoodPipeline
       )
     end
 
+    def create_cancellation_migration
+      if cancellation_migration_exists?
+        say_status :skip, "cancellation migration already exists"
+        return
+      end
+
+      migration_template(
+        "add_good_pipeline_cancellation.rb.erb",
+        "db/migrate/add_good_pipeline_cancellation.rb"
+      )
+    end
+
     private
 
     def dashboard_indexes_migration_exists?
-      pattern = File.join(destination_root, "db/migrate/*_add_good_pipeline_dashboard_indexes.rb")
-      Dir.glob(pattern).any?
+      migration_exists?("add_good_pipeline_dashboard_indexes")
+    end
+
+    def cancellation_migration_exists?
+      migration_exists?("add_good_pipeline_cancellation")
+    end
+
+    def migration_exists?(basename)
+      Dir.glob(File.join(destination_root, "db/migrate/*_#{basename}.rb")).any?
     end
   end
 end

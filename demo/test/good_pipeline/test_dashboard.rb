@@ -111,7 +111,8 @@ module GoodPipeline
       assert_includes response.body, "gp-row-detail-inner"
       assert_includes response.body, "is-running"
       assert_includes response.body, %(colspan="7")
-      assert_match(/disabled(?:="disabled")? title="not yet implemented"/, response.body)
+      assert_includes response.body, "/pipelines/#{execution.id}/rerun"
+      assert_includes response.body, "/pipelines/#{execution.id}/cancel"
     end
 
     test "canonical pipeline_type parameter scopes executions" do
@@ -335,6 +336,156 @@ module GoodPipeline
       assert_equal 1, names.count("index_gp_pipelines_on_type_created_at_id")
       assert_equal 1, names.count("index_gp_pipelines_on_status_created_at_id")
       assert_equal 1, names.count("index_gp_pipelines_on_created_at_id")
+    end
+
+    test "re-run starts a separate execution from the same params and lands on it" do
+      source = create_execution(type: "TestPipeline", status: "failed")
+      create_step(source, key: "default", coordination_status: "failed")
+
+      assert_difference -> { PipelineRecord.count }, 1 do
+        post "/good_pipeline/pipelines/#{source.id}/rerun"
+      end
+
+      rerun = PipelineRecord.where.not(id: source.id).sole
+
+      assert_redirected_to "/good_pipeline/pipelines/#{rerun.id}"
+      assert_equal "TestPipeline", rerun.type
+      assert_equal source.params, rerun.params
+      assert_equal "running", rerun.status
+      assert_equal "failed", source.reload.status
+    end
+
+    test "re-run behaves identically for a succeeded execution" do
+      source = create_execution(type: "TestPipeline", status: "succeeded")
+
+      post "/good_pipeline/pipelines/#{source.id}/rerun"
+
+      rerun = PipelineRecord.where.not(id: source.id).sole
+
+      assert_redirected_to "/good_pipeline/pipelines/#{rerun.id}"
+      assert_equal "running", rerun.status
+      assert_equal "succeeded", source.reload.status
+    end
+
+    test "re-run of a type that no longer exists reports back instead of raising" do
+      source = create_execution(type: "RemovedPipeline", status: "failed")
+
+      assert_no_difference -> { PipelineRecord.count } do
+        post "/good_pipeline/pipelines/#{source.id}/rerun"
+      end
+
+      assert_redirected_to "/good_pipeline/pipelines/#{source.id}"
+      assert_equal "RemovedPipeline is no longer a defined pipeline", flash[:alert]
+    end
+
+    test "cancel skips pending steps and leaves in-flight steps to finish" do
+      execution = create_execution(type: "TestPipeline", status: "running")
+      in_flight = create_step(execution, key: "a", coordination_status: "enqueued")
+      pending = create_step(execution, key: "b", coordination_status: "pending")
+
+      post "/good_pipeline/pipelines/#{execution.id}/cancel"
+
+      assert_redirected_to "/good_pipeline/pipelines/#{execution.id}"
+      assert_equal "enqueued", in_flight.reload.coordination_status
+      assert_equal "skipped", pending.reload.coordination_status
+      assert_predicate execution.reload, :canceling?
+    end
+
+    test "cancel of an execution that already finished reports back" do
+      execution = create_execution(type: "TestPipeline", status: "succeeded")
+
+      post "/good_pipeline/pipelines/#{execution.id}/cancel"
+
+      assert_equal "Test is no longer running", flash[:alert]
+      assert_equal "succeeded", execution.reload.status
+      refute_predicate execution, :canceled?
+    end
+
+    # Stored params replay into today's `configure` signature, and JSONB drops
+    # types on the way back out. Either mismatch is an operator-visible flash,
+    # not a 500. VideoProcessingPipeline requires a `video_id:` the stored
+    # params do not carry.
+    test "re-run reports back when stored params no longer match the signature" do
+      execution = create_execution(type: "VideoProcessingPipeline", status: "failed")
+
+      assert_no_difference -> { PipelineRecord.count } do
+        post "/good_pipeline/pipelines/#{execution.id}/rerun"
+      end
+
+      assert_redirected_to "/good_pipeline/pipelines/#{execution.id}"
+      assert_match(/could not re-run Video/, flash[:alert])
+      assert_match(/missing keyword/, flash[:alert])
+      assert_equal "failed", execution.reload.status
+    end
+
+    test "execution page offers re-run and cancel in place of the disabled placeholders" do
+      execution = create_execution(type: "TestPipeline", status: "running")
+      create_step(execution, key: "a", coordination_status: "enqueued")
+
+      get "/good_pipeline/pipelines/#{execution.id}"
+
+      assert_response :success
+      refute_includes response.body, "not yet implemented"
+      assert_includes response.body, "/pipelines/#{execution.id}/rerun"
+      assert_includes response.body, "/pipelines/#{execution.id}/cancel"
+      assert_includes response.body, "data-gp-confirm"
+    end
+
+    test "cancel is offered only while an execution can still be stopped" do
+      execution = create_execution(type: "TestPipeline", status: "succeeded")
+
+      get "/good_pipeline/pipelines/#{execution.id}"
+
+      assert_response :success
+      assert_includes response.body, "/pipelines/#{execution.id}/rerun"
+      refute_includes response.body, "/pipelines/#{execution.id}/cancel"
+    end
+
+    test "a draining execution shows canceling instead of a second cancel button" do
+      execution = create_execution(type: "TestPipeline", status: "running")
+      create_step(execution, key: "a", coordination_status: "enqueued")
+      execution.update_columns(canceled_at: Time.current)
+
+      get "/good_pipeline/pipelines/#{execution.id}"
+
+      assert_response :success
+      assert_includes response.body, "canceling"
+      refute_includes response.body, "/pipelines/#{execution.id}/cancel"
+    end
+
+    test "a canceled execution is distinguishable from a failure-driven halt" do
+      execution = create_execution(type: "TestPipeline", status: "halted")
+      execution.update_columns(canceled_at: Time.current)
+
+      get "/good_pipeline/pipelines/#{execution.id}"
+
+      assert_response :success
+      assert_includes response.body, "halted · canceled"
+    end
+
+    # The `· canceled` suffix marks a settled cancellation. While draining, the
+    # expanded row must agree with the detail page: plain `running` plus the
+    # disabled canceling button, never the contradictory `running · canceled`.
+    test "a draining execution's expanded row does not read as canceled" do
+      execution = create_execution(type: "TestPipeline", status: "running")
+      create_step(execution, key: "a", coordination_status: "enqueued")
+      execution.update_columns(canceled_at: Time.current)
+
+      get "/good_pipeline", params: { expanded: execution.id }
+
+      assert_response :success
+      refute_includes response.body, "running · canceled"
+      assert_includes response.body, "canceling"
+    end
+
+    test "a canceled execution's expanded row reads halted · canceled" do
+      execution = create_execution(type: "TestPipeline", status: "halted")
+      execution.update_columns(canceled_at: Time.current)
+
+      get "/good_pipeline", params: { expanded: execution.id }
+
+      assert_response :success
+      assert_includes response.body, "halted · canceled"
     end
 
     private

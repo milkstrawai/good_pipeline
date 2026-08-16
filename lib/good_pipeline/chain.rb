@@ -23,15 +23,19 @@ module GoodPipeline
 
       configs.each do |pipeline_class, pipeline_params|
         instance = pipeline_class.build(**pipeline_params)
-        downstream_record = Runner.call(instance, start: false)
-        downstream_records << downstream_record
 
-        @pipeline_records.each do |upstream_record|
-          ChainRecord.create!(
-            upstream_pipeline: upstream_record,
-            downstream_pipeline: downstream_record
-          )
+        # The downstream and all of its incoming edges become visible together,
+        # so a concurrently propagating settlement can never pass the
+        # all-upstreams check against a partially registered fan-in.
+        downstream_record = PipelineRecord.transaction do
+          record = Runner.call(instance, start: false)
+          @pipeline_records.each do |upstream_record|
+            ChainRecord.create!(upstream_pipeline: upstream_record, downstream_pipeline: record)
+          end
+          record
         end
+
+        downstream_records << downstream_record
       end
 
       propagate_if_upstream_already_terminal

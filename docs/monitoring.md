@@ -41,10 +41,12 @@ step.duration             # => 12.34 (Float seconds, from GoodJob record)
 |---|---|
 | `pending` | Created but root steps not yet enqueued — waiting in a chain |
 | `running` | At least one step is enqueued or executing |
-| `succeeded` | All steps terminal, none failed |
+| `succeeded` | All steps terminal, none failed, not cancelled |
 | `failed` | One or more steps failed; `:continue` or `:ignore` strategy was used |
-| `halted` | `:halt` strategy was applied — `halt_triggered` is `true` |
+| `halted` | `:halt` strategy was applied (`halt_triggered` is `true`), **or** an operator cancelled the execution (`canceled_at` is set) |
 | `skipped` | Skipped because an upstream pipeline in a chain failed |
+
+A cancelled execution reports `halted` so existing filters, badges and KPI queries keep working unchanged. `canceled_at` is what distinguishes an operator cancel from a failure-driven halt — a cancel sets it and leaves `halt_triggered` false. The dashboard renders the pair as `halted · canceled`.
 
 ## Step statuses
 

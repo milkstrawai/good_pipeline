@@ -9,7 +9,7 @@ class TestStepFinishedIdempotency < ActiveSupport::TestCase
     step = build_step(pipeline, key: "a")
     step.update_columns(coordination_status: "succeeded")
 
-    GoodPipeline::Coordinator.complete_step(step.reload, succeeded: true)
+    complete_step_for(step, succeeded: true)
 
     assert_equal "succeeded", step.reload.coordination_status
   end
@@ -20,7 +20,7 @@ class TestStepFinishedIdempotency < ActiveSupport::TestCase
     step = build_step(pipeline, key: "a")
     step.update_columns(coordination_status: "failed")
 
-    GoodPipeline::Coordinator.complete_step(step.reload, succeeded: false)
+    complete_step_for(step, succeeded: false)
 
     assert_equal "failed", step.reload.coordination_status
   end
@@ -31,7 +31,7 @@ class TestStepFinishedIdempotency < ActiveSupport::TestCase
     step = build_step(pipeline, key: "a")
     step.update_columns(coordination_status: "skipped")
 
-    GoodPipeline::Coordinator.complete_step(step.reload, succeeded: true)
+    complete_step_for(step, succeeded: true)
 
     assert_equal "skipped", step.reload.coordination_status
   end

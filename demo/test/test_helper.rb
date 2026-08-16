@@ -95,6 +95,18 @@ module ActiveSupport
       )
     end
 
+    # Reports a step outcome the way StepFinishedJob does: through the batch
+    # claim. Assigns a batch id when the fixture never enqueued for real.
+    def complete_step_for(step, succeeded:)
+      step.reload
+      step.update_columns(good_job_batch_id: SecureRandom.uuid) if step.good_job_batch_id.nil?
+      GoodPipeline::Coordinator.complete_step(
+        step_id: step.id,
+        batch_id: step.good_job_batch_id,
+        succeeded: succeeded
+      )
+    end
+
     def build_step(pipeline, key:, dependencies: [], on_failure_strategy: nil, **attributes)
       step = create_step(pipeline, key: key, on_failure_strategy: on_failure_strategy, **attributes)
       dependencies.each do |dependency_step|

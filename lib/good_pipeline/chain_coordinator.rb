@@ -15,7 +15,14 @@ module GoodPipeline
         skipped_downstream_ids = nil
 
         PipelineRecord.transaction do
-          locked = PipelineRecord.lock("FOR UPDATE SKIP LOCKED").find_by(id: pipeline_id)
+          # A blocking lock, deliberately. With SKIP LOCKED, a propagation
+          # holding this row while reading a sibling upstream as still-running
+          # combines with that sibling skipping past the held lock — both exit
+          # without starting the downstream, stranding it. Blocking is
+          # deadlock-free here: each propagation transaction locks exactly one
+          # downstream row and takes no other pipeline locks while holding it
+          # (the skip cascade below runs after this transaction commits).
+          locked = PipelineRecord.lock("FOR UPDATE").find_by(id: pipeline_id)
           return unless locked&.pending?
 
           if should_skip_downstream?(locked)

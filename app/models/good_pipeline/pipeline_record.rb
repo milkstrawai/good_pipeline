@@ -62,6 +62,23 @@ module GoodPipeline
       TERMINAL_STATUSES.include?(status)
     end
 
+    # Operator cancellation is recorded as a timestamp rather than a status so
+    # that a canceled pipeline still reports `halted` to every existing filter,
+    # badge and KPI query. `canceled_at` is what tells the two apart.
+    def canceled?
+      canceled_at.present?
+    end
+
+    # Cancellation drains rather than kills: steps already handed to GoodJob run
+    # to completion, so a canceled pipeline stays `running` until they report back.
+    def canceling?
+      canceled? && !terminal?
+    end
+
+    def cancelable?
+      running? && !canceled?
+    end
+
     def transition_to!(new_status)
       new_status = new_status.to_s
       allowed = VALID_TRANSITIONS.fetch(status, [])

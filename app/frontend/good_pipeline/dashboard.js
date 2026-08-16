@@ -438,7 +438,24 @@
     if (showGraph) requestDiagramRender(diagram, false);
   }
 
+  // The dashboard layout loads neither Turbo nor rails-ujs, so data-turbo-confirm
+  // and data-confirm are inert here; destructive actions confirm through this.
+  document.addEventListener("submit", function (event) {
+    var form = event.target.closest("form[data-gp-confirm]");
+    if (!form) return;
+    if (!window.confirm(form.getAttribute("data-gp-confirm"))) event.preventDefault();
+  });
+
+  function dismissFlash(flash) {
+    if (!flash) return;
+    flash.classList.add("gp-flash--closing");
+    setTimeout(function () { flash.remove(); }, 200);
+  }
+
   document.addEventListener("click", function (event) {
+    var flashDismiss = event.target.closest("[data-gp-flash-dismiss]");
+    if (flashDismiss) { event.preventDefault(); dismissFlash(flashDismiss.closest(".gp-flash")); return; }
+
     var copy = event.target.closest("[data-gp-copy]");
     if (copy) { event.preventDefault(); event.stopPropagation(); copyValue(copy); return; }
 
@@ -528,6 +545,10 @@
     latestRequestedUrl = window.location.href;
     partialNav(window.location.href, { history:"none", silent:true });
   });
+
+  // Notices auto-dismiss; alerts stay until dismissed so errors cannot be missed.
+  var noticeFlash = document.querySelector(".gp-flash--notice");
+  if (noticeFlash) setTimeout(function () { dismissFlash(noticeFlash); }, 6000);
 
   initializeDynamicContent();
 })();

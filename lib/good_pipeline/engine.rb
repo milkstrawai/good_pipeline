@@ -5,11 +5,13 @@ module GoodPipeline
     engine_name "good_pipeline"
     isolate_namespace GoodPipeline
 
-    initializer "good_pipeline.check_good_job_config" do
-      ActiveSupport.on_load(:active_job) do
-        next if GoodJob.preserve_job_records == true
-
-        raise GoodPipeline::ConfigurationError, "GoodPipeline requires GoodJob.preserve_job_records = true"
+    # Registered after GoodJob's own rails_config initializer so our
+    # after_initialize callback runs after GoodJob has applied
+    # `config.good_job.*` — validating at on_load(:active_job) read defaults
+    # and let an application-configured broken setting boot.
+    initializer "good_pipeline.check_good_job_config", after: "good_job.rails_config" do |app|
+      app.config.after_initialize do
+        GoodPipeline.validate_good_job_configuration!
       end
     end
 

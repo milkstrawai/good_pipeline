@@ -44,13 +44,17 @@ Note: `on_failure` does **not** fire for `skipped` pipelines. Being skipped by a
 
 ## Asynchronous dispatch
 
-Callbacks are dispatched via `PipelineCallbackJob`, a GoodJob job enqueued after the terminal state transaction commits. A slow external call (Slack, webhooks) cannot stall the coordinator, callback execution cannot corrupt pipeline state, and callbacks get GoodJob's retry mechanism if they fail.
+Callbacks are dispatched via `PipelineCallbackJob`, a GoodJob job enqueued **in the same transaction** that records the terminal state and executed by GoodJob only after that transaction commits (workers see committed rows only). A slow external call (Slack, webhooks) cannot stall the coordinator, callback execution cannot corrupt pipeline state, and callbacks get GoodJob's retry mechanism if they fail.
 
 `PipelineCallbackJob` runs on the queue configured by `callback_queue_name` (default: `"good_pipeline_callbacks"`). This is separate from `coordination_queue_name` which controls the coordination jobs (`StepFinishedJob`, `PipelineReconciliationJob`), so slow callbacks don't block pipeline progression. See [Defining Pipelines](/defining-pipelines) for configuration options.
 
 ## Exactly-once guarantee
 
-The callback bundle (`on_complete` + one of `on_success`/`on_failure`) is dispatched as a **single unit**. A `callbacks_dispatched_at` timestamp is set atomically inside a `FOR UPDATE` locked transaction, ensuring the bundle fires exactly once even if `recompute_pipeline_status` is called from multiple code paths (coordinator or batch reconciliation).
+The callback bundle (`on_complete` + one of `on_success`/`on_failure`) is dispatched as a **single unit, exactly once**. A `callbacks_dispatched_at` timestamp is set inside the same `FOR UPDATE` locked transaction that writes the terminal status, so concurrent settlement paths — the coordinator, batch reconciliation, an operator cancel — cannot double-dispatch it.
+
+One boundary of that guarantee is worth knowing: **dispatch is exactly-once; execution is at-least-once.** `PipelineCallbackJob` declares no retry policy of its own, but a crash mid-execution redelivers it, and a raising callback can be retried from GoodJob's dashboard or by an application-configured `retry_on` — any of which re-invokes the whole bundle, including work it partially completed.
+
+[Cancelling](/dashboard#cancel) an execution dispatches the bundle the same way any other halt does, at the single settlement that ends the run.
 
 ## Callback failure isolation
 

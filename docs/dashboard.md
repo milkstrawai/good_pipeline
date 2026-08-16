@@ -37,6 +37,37 @@ The detail page shows identity, parameters, failure strategy, chain links, reque
 
 ![Pipeline Details](/screenshots/show.png)
 
+## Execution actions
+
+The detail page and the expanded execution row expose two actions — re-run is always available, and cancel renders only while an execution is `running`. Each posts a form and confirms before acting.
+
+### Re-run
+
+Starts a **new** execution from the stored type and parameters, then redirects to it. The original record is left untouched and stays in the list as history.
+
+Re-running is not a resumption, and behaves identically whatever the original status was:
+
+- Every step runs again, including steps that already succeeded. There is no in-place retry of a single failed step; re-run is the recovery for a failed execution.
+- The DAG is rebuilt from the current class definition, so a re-run picks up code changes made since the original run.
+- Pipelines chained onto the original with `.then` are **not** recreated. That topology lives at the original call site rather than in the pipeline class, so a re-run of a chained pipeline runs the pipeline alone.
+- Jobs run again in full, so re-running a pipeline with external side effects repeats them.
+
+The two runs are independent records with no stored link between them. Both count toward execution totals and duration percentiles, and the original keeps its `failed` status, so a successful re-run does not clear the failure from the `failed · 7d` KPI.
+
+One GoodJob interaction to know: retrying a step's **batch** from GoodJob's own dashboard re-runs the job, but the stale completion callback is ignored by GoodPipeline's completion claim, so the retried attempt cannot overwrite a newer attempt's coordination state — its side effects still happen, but the pipeline does not advance from it. Re-run is the supported way to retry.
+
+### Cancel
+
+Offered only while an execution is `running`. Cancelling drains rather than kills, because a job already handed to a GoodJob worker cannot be reliably interrupted:
+
+- Pending steps are skipped immediately.
+- Steps already enqueued or executing run to completion.
+- The execution stays `running` and shows `canceling…` until the last in-flight step reports back, then settles on `halted`.
+
+A canceled execution reports the `halted` status so existing filters, badges and KPI queries keep working unchanged; the `canceled_at` column is what distinguishes an operator cancel from a failure-driven halt, and the dashboard renders it as `halted · canceled`. Cancelling dispatches the pipeline's `on_complete` and `on_failure` callbacks the same way any other halt does.
+
+Cancelling is claimed with a single conditional `UPDATE`, so a double-clicked button or two operators acting at once produce one cancellation, not two.
+
 ## Pipeline definitions
 
 The definitions catalog shows each type's strategy, declared steps and dependencies, edge count, execution count, and structural graph.
@@ -60,14 +91,14 @@ GoodPipeline cleanup follows GoodJob's configured preservation window and only d
 
 ## Upgrading to 0.5
 
-Existing applications should generate and apply the dashboard indexes:
+Existing applications should generate and apply the dashboard indexes and the cancellation column:
 
 ```bash
 bin/rails generate good_pipeline:upgrade
 bin/rails db:migrate
 ```
 
-The generator creates at most one `add_good_pipeline_dashboard_indexes` migration. Indexes are built concurrently and use `if_not_exists`, so the migration is safe to re-run against a database where they already exist.
+The generator creates at most one `add_good_pipeline_dashboard_indexes` migration and one `add_good_pipeline_cancellation` migration, skipping either if it already exists. Indexes are built concurrently and use `if_not_exists`, so the migration is safe to re-run against a database where they already exist. The cancellation migration adds a nullable `canceled_at` column to `good_pipeline_pipelines`. It is required for the upgraded dashboard as a whole, not merely when cancel is clicked: the execution detail and expanded-row views read the column, and settlement consults it on every terminal derivation.
 
 An interrupted concurrent build can leave an invalid index that PostgreSQL's `if_not_exists` will skip. Check for that state before retrying:
 

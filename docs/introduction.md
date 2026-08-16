@@ -57,4 +57,4 @@ Choose Geneva Drive when your workflow is inherently sequential and you need pau
 - Ruby >= 3.2
 - Rails >= 7.2
 - PostgreSQL
-- GoodJob >= 4.14 with `preserve_job_records = true`
+- GoodJob >= 4.14 with `preserve_job_records = true`, running in a DB-mediated execution mode: `:external`, or an async variant (`:async`, `:async_all`, `:async_server`) with a live wakeup channel — polling (`poll_interval > 0`) or LISTEN/NOTIFY. `:inline` and deferred enqueue are rejected at boot; for tests, use `:external` and drain with `GoodJob.perform_inline`

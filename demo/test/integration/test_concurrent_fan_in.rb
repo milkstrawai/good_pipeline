@@ -18,13 +18,13 @@ class TestConcurrentFanIn < ActiveSupport::TestCase
       promise_a = rails_promise do
         latch.count_down
         latch.wait(5)
-        GoodPipeline::Coordinator.complete_step(step_a.reload, succeeded: true)
+        complete_step_for(step_a, succeeded: true)
       end
 
       promise_b = rails_promise do
         latch.count_down
         latch.wait(5)
-        GoodPipeline::Coordinator.complete_step(step_b.reload, succeeded: true)
+        complete_step_for(step_b, succeeded: true)
       end
 
       promise_a.value!
@@ -54,7 +54,7 @@ class TestConcurrentFanIn < ActiveSupport::TestCase
       rails_promise do
         latch.count_down
         latch.wait(5)
-        GoodPipeline::Coordinator.complete_step(step.reload, succeeded: true)
+        complete_step_for(step, succeeded: true)
       end
     end
 

@@ -11,7 +11,7 @@ class TestIgnoreTransitiveExemption < ActiveSupport::TestCase
     step_c = build_step(pipeline, key: "c", dependencies: [step_b])
     step_a.update_columns(coordination_status: "enqueued")
 
-    GoodPipeline::Coordinator.complete_step(step_a.reload, succeeded: false)
+    complete_step_for(step_a, succeeded: false)
 
     assert_equal "failed", step_a.reload.coordination_status
 
@@ -33,7 +33,7 @@ class TestIgnoreTransitiveExemption < ActiveSupport::TestCase
     step_d = build_step(pipeline, key: "d")
     step_a.update_columns(coordination_status: "enqueued")
 
-    GoodPipeline::Coordinator.complete_step(step_a.reload, succeeded: false)
+    complete_step_for(step_a, succeeded: false)
 
     assert_equal "skipped", step_d.reload.coordination_status,
                  "Unrelated step should still be skipped under :halt"
@@ -65,6 +65,26 @@ class TestIgnoreTransitiveExemption < ActiveSupport::TestCase
                  "step_c should have been enqueued, not skipped"
   end
 
+  # An exempted step can also depend on a step outside the :ignore cone. The
+  # mass skip resolves that outside arm negatively without a callback, so halt
+  # propagation must re-evaluate the survivor — otherwise it waits forever on
+  # a decrement that never arrives and the pipeline never settles.
+  def test_halt_with_ignore_skips_exempt_step_blocked_by_a_skipped_outside_arm
+    pipeline = create_pipeline(on_failure_strategy: "halt")
+    pipeline.update_columns(status: "running")
+    step_a = build_step(pipeline, key: "a", on_failure_strategy: "ignore")
+    step_b = build_step(pipeline, key: "b")
+    step_d = build_step(pipeline, key: "d", dependencies: [step_a, step_b])
+    step_a.update_columns(coordination_status: "enqueued")
+
+    complete_step_for(step_a, succeeded: false)
+
+    assert_equal "skipped", step_b.reload.coordination_status
+    assert_equal "skipped", step_d.reload.coordination_status,
+                 "Exempt step blocked by a skipped outside arm can never run and must be skipped"
+    assert_equal "halted", pipeline.reload.status
+  end
+
   def test_halt_with_ignore_diamond_dependency_all_exempt
     # A(ignore) -> B -> D
     # A(ignore) -> C -> D
@@ -77,7 +97,7 @@ class TestIgnoreTransitiveExemption < ActiveSupport::TestCase
     step_e = build_step(pipeline, key: "e")
     step_a.update_columns(coordination_status: "enqueued")
 
-    GoodPipeline::Coordinator.complete_step(step_a.reload, succeeded: false)
+    complete_step_for(step_a, succeeded: false)
 
     step_b.reload
     step_c.reload

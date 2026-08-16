@@ -67,11 +67,15 @@
         <tr><td class="gp-kv-key">type</td><td class="gp-kv-value"><%= pipeline.type %></td></tr>
         <tr><td class="gp-kv-key">params</td><td class="gp-kv-value"><%= pipeline.params.to_json %></td></tr>
         <tr><td class="gp-kv-key">created_at</td><td class="gp-kv-value"><%= pipeline.created_at.utc.strftime("%Y-%m-%d %H:%M:%SZ") %></td></tr>
-        <tr><td class="gp-kv-key">status</td><td class="gp-kv-value"><%= pipeline.status %></td></tr>
+        <tr><td class="gp-kv-key">status</td><td class="gp-kv-value"><%= pipeline.status %><%= " · canceled" if pipeline.canceled? && pipeline.terminal? %></td></tr>
       </tbody></table>
       <div class="gp-actions">
-        <button class="gp-action" type="button" disabled title="not yet implemented"><%= %w[failed halted].include?(pipeline.status.to_s) ? "retry failed step" : "re-run pipeline" %></button>
-        <% if pipeline.status.to_s == "running" %><button class="gp-action gp-action--danger" type="button" disabled title="not yet implemented">cancel pipeline</button><% end %>
+        <%= button_to "re-run pipeline", rerun_pipeline_path(pipeline), class: "gp-action", form_class: "gp-action-form", form: { data: { gp_confirm: rerun_confirmation(pipeline) } }, title: "Start a new execution from the same params" %>
+        <% if pipeline.cancelable? %>
+          <%= button_to "cancel pipeline", cancel_pipeline_path(pipeline), class: "gp-action gp-action--danger", form_class: "gp-action-form", form: { data: { gp_confirm: "Cancel #{short_type(pipeline.type)}?\n\nPending steps are skipped. Steps already running finish first." } }, title: "Skip pending steps and let in-flight steps finish" %>
+        <% elsif pipeline.canceling? %>
+          <button class="gp-action gp-action--danger" type="button" disabled title="Canceled — waiting for in-flight steps to finish">canceling…</button>
+        <% end %>
         <%= link_to "detail page + dag ↗", pipeline_path(pipeline), class: "gp-action gp-action--ghost" %>
       </div>
     </section>

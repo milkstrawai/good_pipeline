@@ -77,6 +77,16 @@ def topological_order(pipeline_record) # rubocop:disable Metrics/MethodLength
   ordered
 end
 
+# complete_step claims by (step_id, batch_id): the outcome applies only while the
+# step is still `enqueued` and owned by the batch that reported it.
+def complete(step, succeeded:)
+  GoodPipeline::Coordinator.complete_step(
+    step_id: step.id,
+    batch_id: step.good_job_batch_id,
+    succeeded: succeeded
+  )
+end
+
 def prepare_step_for_completion(pipeline_record)
   pipeline_record.transition_to!(:running)
   ordered_steps = topological_order(pipeline_record)
@@ -167,7 +177,7 @@ TOPOLOGIES.each do |topology|
       pipeline_record, _step_records = create_pipeline_records(topology, size)
       first_step = prepare_step_for_completion(pipeline_record)
 
-      QueryCounter.measure { GoodPipeline::Coordinator.complete_step(first_step, succeeded: true) }
+      QueryCounter.measure { complete(first_step, succeeded: true) }
     end
 
     if json_mode
@@ -223,7 +233,7 @@ OutputFormatter.print_section_header("Halt Propagation") unless json_mode
       pipeline_record = GoodPipeline::Runner.call(instance, start: false)
       first_step = prepare_step_for_completion(pipeline_record)
 
-      QueryCounter.measure { GoodPipeline::Coordinator.complete_step(first_step, succeeded: false) }
+      QueryCounter.measure { complete(first_step, succeeded: false) }
     end
 
     if json_mode
@@ -256,7 +266,7 @@ TOPOLOGIES.each do |topology|
           step.reload
           next unless step.enqueued?
 
-          GoodPipeline::Coordinator.complete_step(step, succeeded: true)
+          complete(step, succeeded: true)
         end
       end
     end

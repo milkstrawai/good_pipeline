@@ -81,7 +81,56 @@ module GoodPipeline
       @connection_info = Dashboard::ConnectionInfo.fetch
     end
 
+    # Starts a fresh execution from the stored type and params. This is a new
+    # pipeline, not a resumption: every step runs again, the DAG is rebuilt from
+    # the current class definition, and pipelines chained onto the original with
+    # `.then` are not recreated, since that topology lives at the original call
+    # site rather than in the pipeline class.
+    def rerun # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
+      source = PipelineRecord.find(params[:id])
+      pipeline_class = runnable_class(source)
+
+      unless pipeline_class
+        return redirect_back_or_to pipeline_path(source), allow_other_host: false,
+                                                          alert: "#{source.type} is no longer a defined pipeline"
+      end
+
+      # Stored params are replayed into today's `configure` signature, and JSONB
+      # round-trips lose types (a Time comes back as a String, symbol keys only
+      # at the top level via symbolize_keys). Either can raise, and a dashboard
+      # button must report that rather than 500.
+      begin
+        rerun = pipeline_class.run(**source.params.symbolize_keys)
+      rescue StandardError => error
+        alert = "could not re-run #{helpers.short_type(source.type)}: #{error.class} — #{error.message}"
+        return redirect_back_or_to pipeline_path(source), allow_other_host: false, alert: alert
+      end
+
+      redirect_to pipeline_path(rerun.id), notice: "re-running #{helpers.short_type(source.type)}"
+    end
+
+    def cancel
+      pipeline = PipelineRecord.find(params[:id])
+      short = helpers.short_type(pipeline.type)
+
+      if Coordinator.cancel_pipeline(pipeline)
+        redirect_back_or_to pipeline_path(pipeline), allow_other_host: false,
+                                                     notice: "canceling #{short} — in-flight steps will finish"
+      else
+        redirect_back_or_to pipeline_path(pipeline), allow_other_host: false,
+                                                     alert: "#{short} is no longer running"
+      end
+    end
+
     private
+
+    # Pipeline records outlive the code that defined them, and `type` is only
+    # ever written by the gem -- but it is still a class name read back out of
+    # the database, so resolve it to a real pipeline class before running it.
+    def runnable_class(source)
+      pipeline_class = source.type.safe_constantize
+      pipeline_class if pipeline_class.is_a?(Class) && pipeline_class < GoodPipeline::Pipeline
+    end
 
     def apply_type_time_search(scope)
       scope = scope.where(type: @filters.pipeline_type) if @filters.pipeline_type

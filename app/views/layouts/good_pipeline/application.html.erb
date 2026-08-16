@@ -18,6 +18,12 @@
     <script src="<%= frontend_static_path(id: "dashboard", format: :js) %>" defer nonce="<%= content_security_policy_nonce %>"></script>
   </head>
   <body>
+    <% if flash[:alert].present? || flash[:notice].present? %>
+      <div class="gp-flash gp-flash--<%= flash[:alert].present? ? "alert" : "notice" %>" role="<%= flash[:alert].present? ? "alert" : "status" %>">
+        <span class="gp-flash-text"><%= flash[:alert].presence || flash[:notice] %></span>
+        <button type="button" class="gp-flash-close" data-gp-flash-dismiss aria-label="Dismiss">&times;</button>
+      </div>
+    <% end %>
     <%= yield %>
     <div id="gp-aria-live" class="gp-sr-only" aria-live="polite" aria-atomic="true"></div>
   </body>

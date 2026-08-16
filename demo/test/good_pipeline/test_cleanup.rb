@@ -90,4 +90,28 @@ class TestCleanup < ActiveSupport::TestCase
     assert_not_nil GoodPipeline::PipelineRecord.find_by(id: @running_pipeline.id)
     assert_not_nil GoodPipeline::PipelineRecord.find_by(id: @recent_pipeline.id)
   end
+
+  test "skips a candidate whose row is held by a concurrent claim" do
+    locked = Concurrent::CountDownLatch.new(1)
+    release = Concurrent::CountDownLatch.new(1)
+
+    holder = rails_promise do
+      GoodPipeline::PipelineRecord.transaction do
+        GoodPipeline::PipelineRecord.lock("FOR UPDATE").find(@old_pipeline.id)
+        locked.count_down
+        release.wait(10)
+      end
+    end
+
+    assert locked.wait(10), "holder never acquired the row lock"
+
+    GoodPipeline.cleanup_preserved_pipelines(older_than: @now - 14.days)
+
+    release.count_down
+    holder.value!(10)
+
+    assert_not_nil GoodPipeline::PipelineRecord.find_by(id: @old_pipeline.id)
+    assert_not_nil GoodPipeline::StepRecord.find_by(id: @old_step.id)
+    assert_not_nil GoodPipeline::DependencyRecord.find_by(id: @old_dependency.id)
+  end
 end

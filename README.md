@@ -9,7 +9,7 @@ Define multi-step workflows as directed acyclic graphs — not linear chains. St
 - Ruby >= 3.2
 - Rails >= 7.2
 - PostgreSQL
-- GoodJob >= 4.14 with `preserve_job_records = true`
+- GoodJob >= 4.14 with `preserve_job_records = true`, running in a DB-mediated execution mode: `:external`, or an async variant (`:async`, `:async_all`, `:async_server`) with a live wakeup channel — polling (`poll_interval > 0`) or LISTEN/NOTIFY. `:inline` and deferred enqueue are rejected at boot; for tests, use `:external` and drain with `GoodJob.perform_inline`
 
 ## Installation
 
@@ -26,14 +26,14 @@ bin/rails generate good_pipeline:install
 bin/rails db:migrate
 ```
 
-When upgrading an existing application to GoodPipeline 0.5, add the dashboard indexes before serving a large execution history:
+When upgrading an existing application to GoodPipeline 0.5, add the dashboard indexes and the cancellation column:
 
 ```bash
 bin/rails generate good_pipeline:upgrade
 bin/rails db:migrate
 ```
 
-The upgrade generator is idempotent: if its dashboard-index migration already exists, a second invocation reports a no-op instead of creating another file.
+The upgrade generator is idempotent: each migration it owns is skipped, with a no-op status, when a file for it already exists.
 
 GoodPipeline requires GoodJob to preserve job records. Add this to your GoodJob configuration:
 
@@ -229,6 +229,9 @@ The dashboard provides:
 - Operational KPIs for the selected pipeline type, including current activity, fixed-window failure and duration statistics, and a 14-day sparkline
 - Pipeline details with GoodJob links, step errors, chain links, a stage timeline, and an interactive DAG
 - A definition catalog with declared dependencies and structural DAG or stage views
+- Execution actions from both the detail page and the expanded row: re-run (always) and cancel (running executions)
+
+Re-running starts a new execution from the same type and parameters, rebuilding the DAG from the current class definition and re-running every step; the original stays in place as history, and pipelines chained onto it with `.then` are not recreated. Cancelling drains rather than kills — pending steps are skipped, steps already handed to a GoodJob worker finish, and the execution settles on `halted` once they do. See [the dashboard guide](docs/dashboard.md) for the full semantics.
 
 Dark is the default theme in 0.5. The topbar toggle persists a light or dark preference in a permanent same-site cookie. Dashboard styles and JavaScript ship with the gem; Mermaid and web fonts are loaded from their CDNs, so there is no application-side asset build step.
 

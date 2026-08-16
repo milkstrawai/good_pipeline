@@ -4,7 +4,7 @@ module GoodPipeline
   class BranchResolver
     class << self
       def resolve(step)
-        pipeline_class = step.pipeline.type.constantize
+        pipeline_class = resolve_pipeline_class(step)
         decides_method = step.decides.to_sym
 
         validate_decision_method!(pipeline_class, decides_method, step)
@@ -28,6 +28,15 @@ module GoodPipeline
       end
 
       private
+
+      # Normalized so the coordinator's failure handler records a missing
+      # pipeline class on the step instead of the NameError escaping
+      # StepFinishedJob.
+      def resolve_pipeline_class(step)
+        step.pipeline.type.constantize
+      rescue NameError => error
+        raise ConfigurationError, error.message
+      end
 
       def validate_decision_method!(pipeline_class, decides_method, step)
         return if pipeline_class.method_defined?(decides_method) ||
