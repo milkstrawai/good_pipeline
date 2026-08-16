@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module GoodPipeline
-  class StepFinishedJob < ActiveJob::Base
+  class StepFinishedJob < InternalJob
     def perform(batch, _context)
       GoodPipeline::Coordinator.complete_step(
         step_id: batch.properties[:step_id],

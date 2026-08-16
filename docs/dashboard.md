@@ -45,6 +45,13 @@ The detail page and the expanded execution row expose two actions — re-run is 
 
 Starts a **new** execution from the stored type and parameters, then redirects to it. The original record is left untouched and stays in the list as history.
 
+The action distinguishes whether graph persistence occurred:
+
+- If the stored class is missing, or today's `configure` signature or graph validation rejects the stored parameters before persistence, no execution is created. The dashboard stays on the source execution and reports the error.
+- Once a new graph commits, the dashboard always redirects to that new execution. Deterministic branch or root-start errors are recorded on the affected step and settled through its failure strategy. If an unexpected infrastructure error interrupts startup, the redirect still targets the new execution and says it was created but could not fully start; the underlying error is reported with both source and new pipeline IDs.
+
+This also covers a partial root start: jobs inserted before another root fails remain visible on the newly created execution. Operator-facing messages do not include arbitrary application exception text, which may contain stored parameters or credentials; detailed context remains in Rails error reporting and step failure metadata.
+
 Re-running is not a resumption, and behaves identically whatever the original status was:
 
 - Every step runs again, including steps that already succeeded. There is no in-place retry of a single failed step; re-run is the recovery for a failed execution.
@@ -53,6 +60,8 @@ Re-running is not a resumption, and behaves identically whatever the original st
 - Jobs run again in full, so re-running a pipeline with external side effects repeats them.
 
 The two runs are independent records with no stored link between them. Both count toward execution totals and duration percentiles, and the original keeps its `failed` status, so a successful re-run does not clear the failure from the `failed · 7d` KPI.
+
+Each click intentionally creates another independent execution. This is not an exactly-once HTTP operation, but no created execution is hidden behind a redirect to an older record.
 
 One GoodJob interaction to know: retrying a step's **batch** from GoodJob's own dashboard re-runs the job, but the stale completion callback is ignored by GoodPipeline's completion claim, so the retried attempt cannot overwrite a newer attempt's coordination state — its side effects still happen, but the pipeline does not advance from it. Re-run is the supported way to retry.
 

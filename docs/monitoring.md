@@ -103,3 +103,22 @@ step.duration  # => 12.34 (seconds as Float), or nil if not available
 ```
 
 Duration is `nil` if the step hasn't run yet or if the GoodJob record is unavailable.
+
+## Coordination health
+
+GoodPipeline internal work is stored as GoodJob rows. Monitor failed or unusually old jobs for these classes alongside user jobs:
+
+- `GoodPipeline::StepFinishedJob`
+- `GoodPipeline::PipelineReconciliationJob`
+- `GoodPipeline::ChainPropagationJob`
+- `GoodPipeline::PipelineCallbackJob`
+
+Chain propagation is one at-least-once job per edge. Duplicate deliveries are harmless because the downstream transition is guarded by a row lock and `pending` status. A failed edge job can be retried independently without blocking another downstream edge.
+
+A pending chained execution whose upstreams are all terminal is a useful alert condition. For executions stranded by the pre-hardening in-memory handoff, reserve fresh propagation jobs using the recovery procedure in [Pipeline Chaining](/pipeline-chaining#recovering-chains-stranded-before-050-hardening). Cleanup preserves the terminal upstreams and edges needed for that recovery while the downstream remains pending.
+
+## Execution configuration health
+
+In any process where GoodJob executes jobs in process, verify `GoodJob.configuration.poll_interval.to_i > 0`. LISTEN/NOTIFY is useful for latency but is not a substitute: a transaction-local worker wakeup can occur before commit and suppress the corresponding notification. GoodPipeline rejects this configuration at boot and at enqueue boundaries.
+
+Also watch boot and enqueue errors for effective Active Job deferral. The relevant value is the job class's behavior under its Rails version (including per-job overrides), not merely GoodJob's raw `enqueue_after_transaction_commit` setting. See [Architecture](/architecture#enqueue-transaction-contract) for the Rails 7.2, 8.0, and 8.1 rules.

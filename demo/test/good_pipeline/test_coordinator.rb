@@ -418,11 +418,16 @@ class TestCoordinator < ActiveSupport::TestCase
     upstream = create_pipeline(status: "running")
     build_step(upstream, key: "a").update_columns(coordination_status: "succeeded")
     downstream = create_pipeline(status: "pending")
-    GoodPipeline::ChainRecord.create!(upstream_pipeline: upstream, downstream_pipeline: downstream)
+    edge = GoodPipeline::ChainRecord.create!(upstream_pipeline: upstream, downstream_pipeline: downstream)
 
     GoodPipeline::Coordinator.cancel_pipeline(upstream)
 
     assert_equal "halted", upstream.reload.status
+    assert_equal "pending", downstream.reload.status
+    assert_equal 1, GoodJob::Job.where(job_class: "GoodPipeline::ChainPropagationJob").count
+
+    GoodPipeline::ChainPropagationJob.perform_now(edge.id)
+
     assert_equal "skipped", downstream.reload.status
   end
 

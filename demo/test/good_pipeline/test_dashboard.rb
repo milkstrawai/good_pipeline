@@ -3,6 +3,78 @@
 require "test_helper"
 require "active_support/testing/time_helpers"
 
+# Small named fixtures need stable class names because pipeline/job class names
+# are persisted and resolved through constantize during these integration tests.
+# rubocop:disable Style/OneClassPerFile
+class DashboardBranchDecisionFailure < StandardError; end
+
+class DashboardRaisingBranchPipeline < GoodPipeline::Pipeline
+  failure_strategy :halt
+
+  def configure(**)
+    branch :decision, by: :raise_decision_error do
+      on(:run) { run :work, DownloadJob }
+      on(:skip)
+    end
+  end
+
+  private
+
+  def raise_decision_error
+    raise DashboardBranchDecisionFailure, "dashboard decision exploded"
+  end
+end
+
+class DashboardPartialRootPipeline < GoodPipeline::Pipeline
+  def configure(**)
+    run :started_root, DownloadJob
+
+    branch :decision, by: :choose_arm do
+      on(:run) { run :branch_work, TranscodeJob }
+      on(:skip)
+    end
+  end
+
+  private
+
+  def choose_arm = :run
+end
+
+class DashboardSensitiveConfigurePipeline < GoodPipeline::Pipeline
+  def configure(**)
+    raise "configure failed with api_key=do-not-expose"
+  end
+end
+
+class DashboardEscapedConfigurePipeline < GoodPipeline::Pipeline
+  def configure(**)
+    raise GoodPipeline::ConfigurationError, "<script>alert('unsafe')</script>"
+  end
+end
+
+class DashboardMissingConfigurePipeline < GoodPipeline::Pipeline; end
+
+class DashboardConstructorFailure < StandardError; end
+
+class DashboardRaisingConstructorJob < ApplicationJob
+  def initialize(...) # rubocop:disable Lint/MissingSuper
+    raise DashboardConstructorFailure, "dashboard job construction failed"
+  end
+
+  def perform(**); end
+end
+
+class DashboardDeterministicPartialRootPipeline < GoodPipeline::Pipeline
+  failure_strategy :continue
+
+  def configure(**)
+    run :started_root, DownloadJob
+    run :failed_root, DashboardRaisingConstructorJob
+    run :finish, CleanupJob, after: %i[started_root failed_root]
+  end
+end
+# rubocop:enable Style/OneClassPerFile
+
 # Integration coverage deliberately verifies several parts of each complete
 # dashboard response in one request.
 # rubocop:disable Minitest/MultipleAssertions
@@ -416,6 +488,173 @@ module GoodPipeline
       assert_match(/could not re-run Video/, flash[:alert])
       assert_match(/missing keyword/, flash[:alert])
       assert_equal "failed", execution.reload.status
+    end
+
+    test "branch decision failure redirects to the visible settled re-run" do
+      source = create_execution(type: "DashboardRaisingBranchPipeline", status: "failed")
+
+      assert_difference -> { PipelineRecord.count }, 1 do
+        post "/good_pipeline/pipelines/#{source.id}/rerun"
+      end
+
+      rerun = PipelineRecord.where.not(id: source.id).sole
+      branch_step = rerun.steps.find_by!(key: "decision")
+
+      assert_redirected_to "/good_pipeline/pipelines/#{rerun.id}"
+      assert_equal "halted", rerun.status
+      assert_equal "failed", branch_step.coordination_status
+      assert_equal "DashboardBranchDecisionFailure", branch_step.error_class
+      assert_equal "dashboard decision exploded", branch_step.error_message
+      assert_equal "failed", source.reload.status
+    end
+
+    test "post-persistence startup error redirects to the created execution and is reported" do # rubocop:disable Metrics/BlockLength
+      source = create_execution(type: "TestPipeline", status: "failed")
+      original_error = RuntimeError.new("database failed with password=do-not-expose")
+      reports = []
+
+      assert_difference -> { PipelineRecord.count }, 1 do
+        with_stubbed_singleton_method(Rails.error, :report, ->(error, **options) { reports << [error, options] }) do
+          with_stubbed_singleton_method(
+            GoodPipeline::Coordinator,
+            :bulk_enqueue_steps,
+            ->(_step_ids) { raise original_error }
+          ) do
+            post "/good_pipeline/pipelines/#{source.id}/rerun"
+          end
+        end
+      end
+
+      rerun = PipelineRecord.where.not(id: source.id).sole
+      reported_error, report_options = reports.fetch(0)
+
+      assert_redirected_to "/good_pipeline/pipelines/#{rerun.id}"
+      assert_match(/new Test execution was created but could not fully start/, flash[:alert])
+      refute_includes flash[:alert], original_error.message
+      assert_instance_of GoodPipeline::PipelineStartError, reported_error
+      assert_same original_error, reported_error.cause
+      assert_equal rerun.id, reported_error.pipeline_id
+      assert report_options.fetch(:handled)
+      assert_equal rerun.id, report_options.dig(:context, :good_pipeline_pipeline_id)
+      assert_equal source.id, report_options.dig(:context, :good_pipeline_source_id)
+      assert_equal 1, reports.size
+    end
+
+    test "partial root startup keeps the durable job visible on the created execution" do
+      source = create_execution(type: "DashboardPartialRootPipeline", status: "failed")
+      original_error = RuntimeError.new("branch infrastructure failed with token=do-not-expose")
+      reports = []
+
+      with_stubbed_singleton_method(Rails.error, :report, ->(error, **options) { reports << [error, options] }) do
+        with_stubbed_singleton_method(
+          GoodPipeline::BranchResolver,
+          :resolve,
+          ->(_step) { raise original_error }
+        ) do
+          post "/good_pipeline/pipelines/#{source.id}/rerun"
+        end
+      end
+
+      rerun = PipelineRecord.where.not(id: source.id).sole
+      started_root = rerun.steps.find_by!(key: "started_root")
+      branch_root = rerun.steps.find_by!(key: "decision")
+
+      assert_redirected_to "/good_pipeline/pipelines/#{rerun.id}"
+      assert_equal "running", rerun.status
+      assert_equal "enqueued", started_root.coordination_status
+      assert_equal "pending", branch_root.coordination_status
+      assert_equal 1, GoodJob::Job.where(id: started_root.good_job_id, job_class: "DownloadJob").count
+      refute_includes flash[:alert], original_error.message
+      assert_instance_of GoodPipeline::PipelineStartError, reports.fetch(0).first
+    end
+
+    test "deterministic partial root failure is recorded on the visible execution and settles" do
+      source = create_execution(type: "DashboardDeterministicPartialRootPipeline", status: "failed")
+
+      assert_difference -> { PipelineRecord.count }, 1 do
+        post "/good_pipeline/pipelines/#{source.id}/rerun"
+      end
+
+      rerun = PipelineRecord.where.not(id: source.id).sole
+      started_root = rerun.steps.find_by!(key: "started_root")
+      failed_root = rerun.steps.find_by!(key: "failed_root")
+
+      assert_redirected_to "/good_pipeline/pipelines/#{rerun.id}"
+      assert_equal "running", rerun.status
+      assert_equal "enqueued", started_root.coordination_status
+      assert_equal "failed", failed_root.coordination_status
+      assert_equal "DashboardConstructorFailure", failed_root.error_class
+      assert_equal "dashboard job construction failed", failed_root.error_message
+      assert_equal 1, GoodJob::Job.where(id: started_root.good_job_id, job_class: "DownloadJob").count
+
+      GoodJob.perform_inline
+
+      steps = rerun.reload.steps.index_by(&:key)
+
+      assert_equal "failed", rerun.status
+      assert_equal "succeeded", steps.fetch("started_root").coordination_status
+      assert_equal "skipped", steps.fetch("finish").coordination_status
+    end
+
+    test "each repeated re-run request redirects to the execution it created" do
+      source = create_execution(type: "TestPipeline", status: "failed")
+      redirected_locations = []
+
+      2.times do
+        post "/good_pipeline/pipelines/#{source.id}/rerun"
+        redirected_locations << response.location
+      end
+
+      reruns = PipelineRecord.where.not(id: source.id).order(:id).to_a
+
+      assert_equal 2, reruns.size
+      assert_equal 2, reruns.map(&:id).uniq.size
+      reruns.each do |rerun|
+        assert(redirected_locations.any? { |location| location.end_with?("/good_pipeline/pipelines/#{rerun.id}") })
+      end
+    end
+
+    test "unexpected pre-persistence configure errors are reported without exposing their message" do
+      source = create_execution(type: "DashboardSensitiveConfigurePipeline", status: "failed")
+      reports = []
+
+      assert_no_difference -> { PipelineRecord.count } do
+        with_stubbed_singleton_method(Rails.error, :report, ->(error, **options) { reports << [error, options] }) do
+          post "/good_pipeline/pipelines/#{source.id}/rerun"
+        end
+      end
+
+      assert_redirected_to "/good_pipeline/pipelines/#{source.id}"
+      assert_match(/could not re-run Dashboard Sensitive Configure: RuntimeError/, flash[:alert])
+      refute_includes flash[:alert], "api_key"
+      assert_instance_of RuntimeError, reports.fetch(0).first
+      assert_equal source.id, reports.fetch(0).last.dig(:context, :good_pipeline_source_id)
+    end
+
+    test "operator-facing configuration errors do not expose arbitrary application messages" do
+      source = create_execution(type: "DashboardEscapedConfigurePipeline", status: "failed")
+
+      assert_no_difference -> { PipelineRecord.count } do
+        post "/good_pipeline/pipelines/#{source.id}/rerun"
+      end
+
+      follow_redirect!
+
+      assert_response :success
+      assert_includes response.body, "GoodPipeline::ConfigurationError"
+      refute_includes response.body, "&lt;script&gt;alert"
+      refute_includes response.body, "<script>alert('unsafe')</script>"
+    end
+
+    test "missing configure implementation is an outcome-a error with no execution" do
+      source = create_execution(type: "DashboardMissingConfigurePipeline", status: "failed")
+
+      assert_no_difference -> { PipelineRecord.count } do
+        post "/good_pipeline/pipelines/#{source.id}/rerun"
+      end
+
+      assert_redirected_to "/good_pipeline/pipelines/#{source.id}"
+      assert_match(/could not re-run Dashboard Missing Configure: NotImplementedError/, flash[:alert])
     end
 
     test "execution page offers re-run and cancel in place of the disabled placeholders" do

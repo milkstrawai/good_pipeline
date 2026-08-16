@@ -22,14 +22,25 @@ module GoodPipeline
         insert_dependencies(pipeline_record, step_id_by_key)
       end
 
-      enqueue_root_steps(step_id_by_key) if start
+      start_pipeline!(pipeline_record, step_id_by_key) if start
 
       pipeline_record
     end
 
     private
 
+    # Graph persistence has committed before this boundary. Any unexpected
+    # startup error must therefore retain the new execution's identity; callers
+    # must never mistake it for a pre-persistence construction failure.
+    def start_pipeline!(pipeline_record, step_id_by_key)
+      enqueue_root_steps(step_id_by_key)
+    rescue StandardError => error
+      raise PipelineStartError.new(pipeline_id: pipeline_record.id, original_error: error), cause: error
+    end
+
     def create_pipeline_batch(pipeline_id)
+      ExecutionConfiguration.validate_enqueue!(PipelineReconciliationJob)
+
       batch = GoodJob::Batch.new
       batch.on_finish = "GoodPipeline::PipelineReconciliationJob"
       batch.callback_queue_name = @pipeline.coordination_queue_name

@@ -34,7 +34,7 @@ GoodPipeline requires GoodJob to preserve job records so it can read terminal fa
 GoodJob.preserve_job_records = true
 ```
 
-It also requires an execution mode in which jobs are handed to a worker through the database rather than run during enqueue. `:external` and the async variants qualify; async additionally needs a live wakeup channel, which means polling (`poll_interval > 0`) or LISTEN/NOTIFY.
+It also requires an execution mode in which jobs are handed to a worker through the database rather than run during enqueue. `:external` qualifies. An async variant qualifies only when it is effectively in-process and `poll_interval > 0`; LISTEN/NOTIFY may reduce latency, but it is not a substitute for polling.
 
 One of GoodJob's own defaults does not qualify: the test environment defaults to `:inline`, so test configs need one line:
 
@@ -45,14 +45,13 @@ config.good_job.execution_mode = :external
 
 In tests, drain the queue with `GoodJob.perform_inline` after starting a pipeline.
 
-A development async mode defaults to `poll_interval = -1`, which disables polling — but that default still qualifies, because `enable_listen_notify` defaults to true and LISTEN/NOTIFY is a sufficient wakeup channel on its own. A positive `poll_interval` becomes necessary only where LISTEN/NOTIFY is disabled — for example behind a transaction-pooling proxy such as PgBouncer:
+A development async mode can default to `poll_interval = -1`, which disables polling and is unsafe for GoodPipeline. During a transactional enqueue, GoodJob can create a local worker before commit; that worker cannot see the new row and GoodJob suppresses `NOTIFY` because it was created. Positive polling is the recovery path even when LISTEN/NOTIFY is enabled:
 
 ```ruby
-# Only if enable_listen_notify is false
-config.good_job.poll_interval = 1
+config.good_job.poll_interval = 10
 ```
 
-GoodPipeline raises `GoodPipeline::ConfigurationError` at boot if any of these is unmet.
+GoodPipeline raises `GoodPipeline::ConfigurationError` at boot if any of these is unmet. It also rejects effective enqueue deferral, not merely a raw GoodJob setting: Rails 7.2, 8.0, and 8.1 interpret `enqueue_after_transaction_commit` differently, and GoodPipeline mirrors the installed Active Job behavior.
 
 ## Configure queue names (optional)
 
@@ -60,7 +59,7 @@ GoodPipeline routes its internal jobs to dedicated queues by default. You can ov
 
 ```ruby
 # config/initializers/good_pipeline.rb
-GoodPipeline.coordination_queue_name = "pipeline_coordination"  # StepFinishedJob, PipelineReconciliationJob
+GoodPipeline.coordination_queue_name = "pipeline_coordination"  # StepFinishedJob, PipelineReconciliationJob, ChainPropagationJob
 GoodPipeline.callback_queue_name = "pipeline_callbacks"         # PipelineCallbackJob
 ```
 

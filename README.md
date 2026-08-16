@@ -9,7 +9,7 @@ Define multi-step workflows as directed acyclic graphs — not linear chains. St
 - Ruby >= 3.2
 - Rails >= 7.2
 - PostgreSQL
-- GoodJob >= 4.14 with `preserve_job_records = true`, running in a DB-mediated execution mode: `:external`, or an async variant (`:async`, `:async_all`, `:async_server`) with a live wakeup channel — polling (`poll_interval > 0`) or LISTEN/NOTIFY. `:inline` and deferred enqueue are rejected at boot; for tests, use `:external` and drain with `GoodJob.perform_inline`
+- GoodJob >= 4.14 with `preserve_job_records = true`, running in a DB-mediated execution mode: `:external`, or an effectively in-process async variant (`:async`, `:async_all`, `:async_server`) with `poll_interval > 0`. LISTEN/NOTIFY is useful but cannot recover GoodJob's pre-commit local-wakeup miss on its own. `:inline` and effective deferred enqueue are rejected; for tests, use `:external` and drain with `GoodJob.perform_inline`
 
 ## Installation
 
@@ -43,6 +43,13 @@ GoodJob.preserve_job_records = true
 ```
 
 GoodPipeline will raise `GoodPipeline::ConfigurationError` at boot if this is not set.
+
+If GoodJob executes asynchronously in the Rails process, enable positive polling even when LISTEN/NOTIFY is enabled:
+
+```ruby
+config.good_job.execution_mode = :async
+config.good_job.poll_interval = 10
+```
 
 ## Usage
 
@@ -185,7 +192,7 @@ GoodPipeline.run(
 ).then(MergeMediaPipeline, with: { video_id: 123, audio_id: 456 })
 ```
 
-If an upstream pipeline fails or halts, downstream pipelines are automatically skipped.
+If an upstream pipeline fails or halts, downstream pipelines are automatically skipped. Each committed chain edge is propagated by a durable, retryable GoodJob job. Settlement commits the terminal status and those propagation jobs together; duplicate deliveries are harmless because the downstream transition is guarded under a row lock.
 
 ### Monitoring
 
@@ -231,7 +238,7 @@ The dashboard provides:
 - A definition catalog with declared dependencies and structural DAG or stage views
 - Execution actions from both the detail page and the expanded row: re-run (always) and cancel (running executions)
 
-Re-running starts a new execution from the same type and parameters, rebuilding the DAG from the current class definition and re-running every step; the original stays in place as history, and pipelines chained onto it with `.then` are not recreated. Cancelling drains rather than kills — pending steps are skipped, steps already handed to a GoodJob worker finish, and the execution settles on `halted` once they do. See [the dashboard guide](docs/dashboard.md) for the full semantics.
+Re-running starts a new execution from the same type and parameters, rebuilding the DAG from the current class definition and re-running every step; the original stays in place as history, and pipelines chained onto it with `.then` are not recreated. If graph construction fails, no new execution is created. If startup fails after persistence, the dashboard redirects to the new execution so its enqueued, failed, and skipped steps remain visible. Cancelling drains rather than kills — pending steps are skipped, steps already handed to a GoodJob worker finish, and the execution settles on `halted` once they do. See [the dashboard guide](docs/dashboard.md) for the full semantics.
 
 Dark is the default theme in 0.5. The topbar toggle persists a light or dark preference in a permanent same-site cookie. Dashboard styles and JavaScript ship with the gem; Mermaid and web fonts are loaded from their CDNs, so there is no application-side asset build step.
 
@@ -253,7 +260,7 @@ Large executions remain readable: rows with more than 12 steps use an aggregate 
 
 GoodPipeline automatically cleans up old terminal pipelines when GoodJob runs its own cleanup cycle. No configuration needed, it uses GoodJob's retention period (default 14 days).
 
-Pending and running pipelines are intentionally retained. GoodJob may still remove old job rows belonging to a long-running pipeline, so timing for those steps appears as `—` in the dashboard after the retention window; the pipeline and step coordination records remain available.
+Pending and running pipelines are intentionally retained. Terminal upstreams needed by a pending chained downstream are retained too, until durable propagation resolves that relationship. GoodJob may still remove old job rows belonging to a long-running pipeline, so timing for those steps appears as `—` in the dashboard after the retention window; the pipeline and step coordination records remain available.
 
 To configure the retention period, set GoodJob's option:
 

@@ -101,8 +101,14 @@ module GoodPipeline
       # button must report that rather than 500.
       begin
         rerun = pipeline_class.run(**source.params.symbolize_keys)
-      rescue StandardError => error
-        alert = "could not re-run #{helpers.short_type(source.type)}: #{error.class} — #{error.message}"
+      rescue PipelineStartError => error
+        report_rerun_error(error, source: source, pipeline_id: error.pipeline_id)
+        alert = "a new #{helpers.short_type(source.type)} execution was created but could not fully start; " \
+                "inspect it before re-running again"
+        return redirect_to pipeline_path(error.pipeline_id), alert: alert
+      rescue StandardError, NotImplementedError => error
+        report_rerun_error(error, source: source) unless expected_pre_persistence_error?(error)
+        alert = "could not re-run #{helpers.short_type(source.type)}: #{safe_rerun_error_detail(error)}"
         return redirect_back_or_to pipeline_path(source), allow_other_host: false, alert: alert
       end
 
@@ -130,6 +136,30 @@ module GoodPipeline
     def runnable_class(source)
       pipeline_class = source.type.safe_constantize
       pipeline_class if pipeline_class.is_a?(Class) && pipeline_class < GoodPipeline::Pipeline
+    end
+
+    def report_rerun_error(error, source:, pipeline_id: nil)
+      context = { good_pipeline_source_id: source.id }
+      context[:good_pipeline_pipeline_id] = pipeline_id if pipeline_id
+      Rails.error.report(error, handled: true, context: context)
+    end
+
+    def expected_pre_persistence_error?(error)
+      signature_argument_error?(error)
+    end
+
+    # Arbitrary application exception messages may contain credentials or
+    # parameter values. Only the exception type and bounded Ruby
+    # keyword/signature messages are suitable for an operator-facing flash.
+    def safe_rerun_error_detail(error)
+      return error.class.to_s unless signature_argument_error?(error)
+
+      "#{error.class} — #{error.message.to_s.truncate(300)}"
+    end
+
+    def signature_argument_error?(error)
+      error.is_a?(ArgumentError) &&
+        error.message.match?(/\A(?:missing|unknown) keyword(?:s)?:|\Awrong number of arguments\b/)
     end
 
     def apply_type_time_search(scope)

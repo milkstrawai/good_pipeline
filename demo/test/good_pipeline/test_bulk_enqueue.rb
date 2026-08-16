@@ -188,6 +188,6 @@ class TestBulkEnqueue < ActiveSupport::TestCase
     refute_nil good_step.good_job_id
 
     assert_equal "failed", bad_step.reload.coordination_status
-    assert_equal "GoodPipeline::ConfigurationError", bad_step.error_class
+    assert_equal "NameError", bad_step.error_class
   end
 end

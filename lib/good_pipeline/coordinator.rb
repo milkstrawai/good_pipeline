@@ -52,7 +52,6 @@ module GoodPipeline
       def try_enqueue_step(step_id) # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
         step_was_enqueued = false
         skipped_downstream_ids = nil
-        recompute_pipeline_id = nil
 
         begin
           # requires_new: an attempt that fails configuration must roll back its
@@ -65,15 +64,14 @@ module GoodPipeline
             return false if locked_step.good_job_id.present?
 
             skipped_downstream_ids = resolve_step(locked_step)
-            step_was_enqueued = skipped_downstream_ids.nil?
+            step_was_enqueued = skipped_downstream_ids.nil? && locked_step.enqueued?
           end
-        rescue ConfigurationError => error
-          skipped_downstream_ids, recompute_pipeline_id = fail_step_for_configuration_error(step_id, error)
+        rescue ConfigurationError, DeterministicStepStartError => error
+          return fail_step_for_start_error(step_id, error)
         end
 
         downstream_enqueued = false
         skipped_downstream_ids&.each { |id| downstream_enqueued = true if try_enqueue_step(id) }
-        recompute_settled_pipeline(recompute_pipeline_id) if recompute_pipeline_id
         step_was_enqueued || downstream_enqueued
       end
 
@@ -104,7 +102,7 @@ module GoodPipeline
         enqueue_branch_steps(pipeline_ids.first, branch_steps)
       end
 
-      def recompute_pipeline_status(pipeline, has_active_steps: nil) # rubocop:disable Metrics/MethodLength
+      def recompute_pipeline_status(pipeline, has_active_steps: nil)
         # The hint is a fast path only: callers compute it in the same statement
         # as the triggering event, and staleness is conservative — concurrent
         # actors can only add active steps, or recompute themselves after
@@ -126,14 +124,11 @@ module GoodPipeline
           locked.transition_to!(new_status)
           dispatch_callbacks_once(locked, new_status)
 
-          # Chains propagate only after the outermost commit. While this
-          # transaction holds the uncommitted terminal status, a concurrent
-          # settler could read this pipeline as still running and skip a shared
-          # downstream, stranding it; post-commit, the status is durably
-          # visible to whoever locks the downstream next.
-          ActiveRecord.after_all_transactions_commit do
-            ChainCoordinator.propagate_terminal_state(locked)
-          end
+          # The terminal transition and one durable GoodJob handoff per chain
+          # edge commit atomically. A process may die immediately after commit
+          # without losing propagation; duplicate jobs are fenced by the
+          # downstream pipeline row and its pending-status transition.
+          ChainCoordinator.reserve_terminal_state!(locked)
         end
       end
 
@@ -153,7 +148,8 @@ module GoodPipeline
       # nothing can subsequently advance: complete_step claims only `enqueued`
       # steps, and claim_cancellation itself requires `canceled_at` to be nil.
       # recompute_pipeline_status re-locks the same row — re-entrant within this
-      # transaction — and defers chain propagation past the outermost commit.
+      # transaction — and reserves chain propagation before that transaction
+      # commits.
       def cancel_pipeline(pipeline)
         canceled = false
 
@@ -175,7 +171,8 @@ module GoodPipeline
           return if rows_updated.zero?
 
           begin
-            ensure_supported_adapter!(PipelineCallbackJob)
+            ExecutionConfiguration.validate_enqueue!(PipelineCallbackJob)
+            PipelineCallbackJob.set(queue: callback_queue_for(pipeline)).perform_later(pipeline.id, new_status.to_s)
           rescue ConfigurationError => error
             # Raising here would roll back a locked terminal settlement, the
             # worse outcome. The bundle is recorded as dispatched; the loss is
@@ -183,8 +180,6 @@ module GoodPipeline
             Rails.logger.error("[GoodPipeline] callbacks for pipeline #{pipeline.id} not dispatched: #{error.message}")
             return
           end
-
-          PipelineCallbackJob.set(queue: callback_queue_for(pipeline)).perform_later(pipeline.id, new_status.to_s)
         end
       end
 
@@ -213,19 +208,21 @@ module GoodPipeline
         true
       end
 
-      # Coordinated failure handling for a step whose enqueue attempt raised
-      # ConfigurationError after its savepoint rolled back. Locks are
+      # Coordinated failure handling for a step whose deterministic start
+      # attempt failed after its savepoint rolled back. Locks are
       # re-acquired in pipeline→step order and the step is re-claimed
       # conditionally: the savepoint released its lock, so another actor (an
       # earlier failure's halt propagation, a concurrent cancel) may already
       # have resolved the step — in which case its state is left alone.
-      # Returns [downstream_ids_to_cascade, pipeline_id_to_recompute_or_nil].
-      def fail_step_for_configuration_error(step_id, error) # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
+      # Cascading and settlement remain in this transaction. A process crash
+      # therefore cannot commit a failed step while leaving its dependents or
+      # pipeline with no callback or durable actor left to advance them.
+      # Returns whether the coordinated failure started any downstream work.
+      def fail_step_for_start_error(step_id, error) # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength
         pipeline_id = StepRecord.where(id: step_id).pick(:pipeline_id)
-        return [[], nil] if pipeline_id.nil?
+        return false if pipeline_id.nil?
 
-        claimed = false
-        downstream_ids = []
+        downstream_enqueued = false
 
         StepRecord.transaction do
           pipeline = PipelineRecord.lock("FOR UPDATE").find_by(id: pipeline_id)
@@ -234,11 +231,11 @@ module GoodPipeline
           locked_step = StepRecord.lock("FOR UPDATE").find_by(id: step_id, coordination_status: "pending")
           next if locked_step.nil?
 
-          claimed = true
+          recorded_error = error.is_a?(DeterministicStepStartError) ? error.original_error : error
           locked_step.update_columns(
             coordination_status: "failed",
-            error_class: error.class.name,
-            error_message: error.message,
+            error_class: recorded_error.class.name,
+            error_message: recorded_error.message,
             updated_at: Time.current
           )
           # The step reached a terminal state without passing through
@@ -247,10 +244,13 @@ module GoodPipeline
           # waiting on a decrement that no callback will ever deliver.
           decrement_upstream_counts_for_terminal_step(locked_step.id)
           propagate_halt(locked_step) if pipeline.halt?
-          downstream_ids = locked_step.downstream_steps.pluck(:id)
+          locked_step.downstream_steps.pluck(:id).each do |downstream_id|
+            downstream_enqueued = true if try_enqueue_step(downstream_id)
+          end
+          recompute_pipeline_status(pipeline)
         end
 
-        [downstream_ids, claimed ? pipeline_id : nil]
+        downstream_enqueued
       end
 
       # Cleanup can delete a terminal pipeline between the triggering event and
@@ -406,8 +406,9 @@ module GoodPipeline
 
       def enqueue_user_job(step)
         batch = build_step_batch(step)
-        good_job_id = nil
-        batch.enqueue { good_job_id = enqueue_step_job(step) }
+        active_job = nil
+        batch.enqueue { active_job = enqueue_step_job(step) }
+        good_job_id = persisted_provider_job_id!(active_job)
         step.update_columns(
           coordination_status: "enqueued",
           good_job_batch_id: batch.id,
@@ -425,94 +426,69 @@ module GoodPipeline
       end
 
       def enqueue_step_job(step)
+        job = prepare_step_job(step)
+        enqueued_job = job.enqueue
+
+        unless enqueued_job
+          raise job.enqueue_error if job.enqueue_error
+
+          original_error = ActiveJob::EnqueueError.new("#{job.class} halted its enqueue callbacks")
+          raise DeterministicStepStartError.new(original_error), cause: original_error
+        end
+
+        enqueued_job
+      end
+
+      def persisted_provider_job_id!(active_job)
+        raise active_job.enqueue_error if active_job.enqueue_error
+        return active_job.provider_job_id if active_job.provider_job_id.present?
+
+        original_error = ActiveJob::EnqueueError.new("#{active_job.class} did not persist a GoodJob row")
+        raise DeterministicStepStartError.new(original_error), cause: original_error
+      end
+
+      # Construction, option application, and Active Job serialization are
+      # deterministic boundaries: they execute application/configuration code
+      # before GoodJob performs any SQL. Normalize failures there so the step
+      # can settle through the ordinary failure strategy. The actual GoodJob
+      # enqueue remains outside this rescue; connection, SQL, and deadlock
+      # failures must escape as infrastructure errors.
+      def prepare_step_job(step) # rubocop:disable Metrics/MethodLength
         job_class = constantize_for_step!(step.job_class)
-        ensure_supported_adapter!(job_class)
-        ensure_supported_adapter!(StepFinishedJob)
-        job = job_class.new(**step.params.symbolize_keys)
-        enqueued_job = job.enqueue(**step.enqueue_options.symbolize_keys)
-        enqueued_job.provider_job_id || enqueued_job.job_id
+        ExecutionConfiguration.validate_enqueue!(job_class)
+        ExecutionConfiguration.validate_enqueue!(StepFinishedJob)
+
+        deterministic_step_start do
+          params = stored_step_hash!(step.params, step:, field: "params")
+          options = stored_step_hash!(step.enqueue_options, step:, field: "enqueue_options")
+          job = job_class.new(**params.symbolize_keys)
+          apply_enqueue_options(job, options.symbolize_keys)
+          job.serialize
+          job
+        end
       end
 
-      # The boot check covers global configuration; this validates the
-      # effective adapter at the enqueue boundary, catching per-job-class
-      # adapter overrides and post-boot configuration changes. A non-GoodJob
-      # adapter bypasses batch coordination entirely (the batch finishes empty
-      # while the job escapes unbatched); inline execution runs the job during
-      # enqueue, before coordination writes exist; async execution with neither
-      # polling nor LISTEN/NOTIFY strands transactionally enqueued work after a
-      # pre-commit wakeup miss; deferred enqueue loses the batch context.
-      def ensure_supported_adapter!(job_class) # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
-        adapter = job_class.queue_adapter
+      def stored_step_hash!(value, step:, field:)
+        return value if value.is_a?(Hash)
 
-        unless adapter.is_a?(GoodJob::Adapter)
-          raise ConfigurationError,
-                "#{job_class} uses #{adapter.class}; GoodPipeline requires a GoodJob adapter — " \
-                "other adapters bypass batch coordination entirely"
-        end
-
-        if adapter.execute_inline?
-          raise ConfigurationError,
-                "#{job_class} uses GoodJob's :inline execution mode, which GoodPipeline does not support"
-        end
-
-        if adapter.execute_async? && GoodJob.configuration.poll_interval.to_i <= 0 &&
-           !GoodJob.configuration.enable_listen_notify
-          raise ConfigurationError,
-                "#{job_class} executes async with neither polling (poll_interval > 0) nor " \
-                "LISTEN/NOTIFY (enable_listen_notify); a pre-commit wakeup miss would strand " \
-                "transactionally enqueued work with nothing left to recover it"
-        end
-
-        return unless defers_enqueue_past_commit?(job_class, adapter)
-
-        raise ConfigurationError,
-              "#{job_class} defers enqueue until after commit, which loses GoodJob batch context; " \
-              "GoodPipeline requires immediate enqueue"
+        raise ArgumentError, "stored #{field} for step '#{step.key}' must be a JSON object"
       end
 
-      # Mirrors Active Job's version-specific reading of the per-class
-      # enqueue_after_transaction_commit attribute. 7.2: :always defers,
-      # :never does not, anything else consults the adapter. 8.0: :always
-      # defers, :never/:default do not (adapter consultation removed), other
-      # values by truthiness. 8.1+: plain truthiness for every value — lingering
-      # legacy symbols such as :never are truthy and therefore defer.
-      # gem_version is injectable so the mapping is table-testable on any
-      # installed Rails.
-      def defers_enqueue_past_commit?(job_class, adapter, gem_version: ActiveJob.gem_version) # rubocop:disable Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
-        setting = if job_class.respond_to?(:enqueue_after_transaction_commit)
-                    job_class.enqueue_after_transaction_commit
-                  else
-                    :default
-                  end
-
-        if gem_version >= Gem::Version.new("8.1")
-          setting ? true : false
-        elsif gem_version >= Gem::Version.new("8.0")
-          case setting
-          when :always then true
-          when :never, :default then false
-          else setting ? true : false
-          end
-        else
-          case setting
-          when :always then true
-          when :never then false
-          else adapter.respond_to?(:enqueue_after_transaction_commit?) && adapter.enqueue_after_transaction_commit?
-          end
-        end
+      def deterministic_step_start
+        yield
+      rescue StandardError => error
+        raise DeterministicStepStartError.new(error), cause: error
       end
 
       # Class names on pipeline and step rows outlive the code that defined
-      # them. A resolution failure becomes ConfigurationError so the
-      # coordinated failure handler records it on the step — instead of the
-      # NameError killing StepFinishedJob (which has no retry policy) and
-      # wedging the pipeline in `running`. Only the lookup itself is rescued:
-      # a NameError raised from inside user code must not masquerade as a
-      # missing class.
+      # them. A lookup NameError is normalized into the deterministic failure
+      # path while remaining the recorded error and wrapper cause. Only the
+      # lookup itself is rescued: a NameError raised from inside user code must
+      # not masquerade as a missing class.
       def constantize_for_step!(class_name)
         class_name.constantize
       rescue NameError => error
-        raise ConfigurationError, error.message
+        raise DeterministicStepStartError.new(error), cause: error
       end
 
       def derive_terminal_status(pipeline)
@@ -557,10 +533,10 @@ module GoodPipeline
           # Batch.enqueue_all consults the global adapter, and StepFinishedJob
           # is what every step batch enqueues on finish — both validated before
           # anything is resolved, so a failure here reliably prevents enqueue.
-          ensure_supported_adapter!(ActiveJob::Base)
-          ensure_supported_adapter!(StepFinishedJob)
+          ExecutionConfiguration.validate_enqueue!(ActiveJob::Base)
+          ExecutionConfiguration.validate_enqueue!(StepFinishedJob)
           coordination_queue = constantize_for_step!(steps.first.pipeline.type).coordination_queue_name
-        rescue ConfigurationError => error
+        rescue ConfigurationError, DeterministicStepStartError => error
           coordination_queue = nil
           failed_steps = steps.map { |step| [step, error] }
         end
@@ -587,11 +563,9 @@ module GoodPipeline
             step_metadata = {}
 
             live_steps.each do |step|
-              job_class = begin
-                klass = constantize_for_step!(step.job_class)
-                ensure_supported_adapter!(klass)
-                klass
-              rescue ConfigurationError => error
+              active_job = begin
+                prepare_step_job(step)
+              rescue ConfigurationError, DeterministicStepStartError => error
                 failed_steps << [step, error]
                 next
               end
@@ -601,48 +575,49 @@ module GoodPipeline
               batch.callback_queue_name = coordination_queue
               batch.properties = { step_id: step.id }
 
-              active_job = job_class.new(**step.params.symbolize_keys)
-              apply_enqueue_options(active_job, step.enqueue_options.symbolize_keys)
-
               batch_job_pairs << [batch, [active_job]]
-              step_metadata[step.id] = { batch: batch, active_job: active_job }
+              step_metadata[step.id] = { step: step, batch: batch, active_job: active_job }
             end
 
             GoodJob::Batch.enqueue_all(batch_job_pairs) if batch_job_pairs.any?
 
             now = Time.current
             step_metadata.each do |step_id, metadata|
+              provider_job_id = begin
+                persisted_provider_job_id!(metadata[:active_job])
+              rescue DeterministicStepStartError => error
+                failed_steps << [metadata[:step], error]
+                GoodJob::BatchRecord.where(id: metadata[:batch].id).delete_all
+                next
+              end
+
               StepRecord.where(id: step_id).update_all(
                 coordination_status: "enqueued",
                 good_job_batch_id: metadata[:batch].id,
-                good_job_id: metadata[:active_job].provider_job_id || metadata[:active_job].job_id,
+                good_job_id: provider_job_id,
                 updated_at: now
               )
             end
-          end
-        end
 
-        handle_bulk_configuration_failures(failed_steps)
+            handle_bulk_start_failures(failed_steps)
+          end
+        else
+          handle_bulk_start_failures(failed_steps)
+        end
       end
 
-      # Bulk failures produce no StepFinishedJob callback, so beyond the
+      # Bulk start failures produce no StepFinishedJob callback, so beyond the
       # coordinated per-step handling this must cascade skips to dependents and
       # explicitly recompute — otherwise a pipeline whose only remaining work
-      # failed configuration would stay `running` forever.
-      def handle_bulk_configuration_failures(failed_steps)
+      # failed before enqueue would stay `running` forever.
+      def handle_bulk_start_failures(failed_steps)
         return if failed_steps.empty?
 
-        cascade_ids = []
-        pipeline_ids = []
-
-        failed_steps.each do |step, error|
-          downstream_ids, pipeline_id = fail_step_for_configuration_error(step.id, error)
-          cascade_ids.concat(downstream_ids)
-          pipeline_ids << pipeline_id if pipeline_id
+        StepRecord.transaction do
+          failed_steps.sort_by { |step, _error| step.id }.each do |step, error|
+            fail_step_for_start_error(step.id, error)
+          end
         end
-
-        cascade_ids.each { |id| try_enqueue_step(id) }
-        pipeline_ids.uniq.each { |id| recompute_settled_pipeline(id) }
       end
 
       def apply_enqueue_options(active_job, options) # rubocop:disable Metrics/AbcSize,Metrics/CyclomaticComplexity,Metrics/PerceivedComplexity

@@ -27,8 +27,8 @@ Internal architecture for contributors and anyone who wants to understand how th
 ┌─────────────────────────▼───────────────────────────────────┐
 │                   Execution Layer                            │
 │    One GoodJob::Batch per step                              │
-│    User jobs enqueued via perform_later — fully untouched   │
-│    Batch on_finish is the sole terminal signal              │
+│    User jobs remain ordinary Active Job instances           │
+│    Batch finish or deterministic start failure settles step │
 │    Enqueue is transactionally coupled to row transition     │
 └─────────────────────────┬───────────────────────────────────┘
                           │
@@ -43,7 +43,7 @@ Internal architecture for contributors and anyone who wants to understand how th
 ┌─────────────────────────▼───────────────────────────────────┐
 │                    Chain Layer                               │
 │    .then() wires pipeline-level DAG dependencies            │
-│    Same coordinator pattern, one level up                   │
+│    Durable per-edge GoodJob handoffs; idempotent starts     │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -107,9 +107,11 @@ Unique constraint: `(pipeline_id, key)` — enforces step key uniqueness within 
 
 ## One batch per step
 
-Each step has its own `GoodJob::Batch`. The user's job is enqueued via `perform_later` into that batch, preserving all ActiveJob semantics (instrumentation, callbacks, serialization, queue routing, retries, `discard_on`).
+Each successfully started step has its own `GoodJob::Batch`. GoodPipeline constructs and enqueues the user's ordinary Active Job instance into that batch, preserving Active Job semantics (instrumentation, callbacks, serialization, queue routing, retries, `discard_on`).
 
 When the batch's `on_finish` fires, `StepFinishedJob` receives the signal and delegates to the coordinator. `StepFinishedJob` is a thin dispatcher — it does not own any state transitions.
+
+A deterministic failure before GoodJob insertion—for example a missing class, invalid stored arguments, constructor or serialization error, or branch decision exception—has no batch callback to wait for. The coordinator records the original exception class and message on that step, settles dependent counts, applies the configured failure strategy, and recomputes the pipeline. GoodPipeline persistence and GoodJob insertion failures stay outside that normalization and escape as infrastructure errors.
 
 ## The coordinator
 
@@ -139,13 +141,35 @@ Pipeline terminal status is **never inferred from a single event**. It is always
 
 Settlement is serialized on the pipeline row: `recompute_pipeline_status` re-reads the pipeline under `FOR UPDATE`, re-checks for active steps, and performs the terminal transition and callback reservation while holding the lock. This makes it safe to call from any code path with any (possibly stale) record — the caller's in-memory copy never decides the outcome, so a stale instance can neither force a settlement the locked row does not warrant nor suppress one it does.
 
-Chain propagation deliberately runs **after** the settlement transaction commits. While a settlement holds its uncommitted terminal status, a concurrently settling sibling upstream could read it as still running and decline to start a shared downstream; once committed, the status is durably visible to whichever propagation locks the downstream next.
+The same settlement transaction also reserves one `ChainPropagationJob` per outgoing chain edge. The terminal status and the GoodJob rows therefore commit or roll back together. Propagation executes after commit because workers cannot see the uncommitted job rows, but its delivery no longer depends on an in-memory after-commit callback.
+
+## Durable chain handoff
+
+`ChainPropagationJob` carries only an immutable chain-edge ID and reloads current state when it runs. Delivery is at least once: transient database failures have a bounded retry policy, and operators can retry a permanently failed job in GoodJob. One job per edge isolates a broken downstream from every other downstream of the same upstream. Jobs use the upstream pipeline class's coordination queue when that class still resolves, with the global coordination queue as a safe fallback for historical class names.
+
+Each delivery locks only the downstream pipeline row. A pending downstream changes once to either `running` (all upstreams succeeded) or `skipped` (an upstream failed, halted, or was skipped); a duplicate or stale delivery observes a non-pending row and does nothing. Starting roots is performed while that downstream lock is held, so concurrent fan-in deliveries cannot enqueue the roots twice. If a skipped downstream has outgoing edges, their propagation jobs are reserved atomically with its own terminal transition.
+
+Chain registration uses the other half of the settlement handshake. One transaction creates all new downstream graphs, locks existing upstream pipeline rows in primary-key order, creates every incoming edge, and reserves propagation for any locked upstream already terminal. Settlement holds the same upstream row lock while changing status and enumerating edges. Consequently registration either commits its edge before settlement reserves jobs, or waits for settlement and reserves the job itself after observing the terminal row.
 
 ## Enqueue transaction contract
 
 The transition of a step from `pending` to `enqueued` and the insertion of the corresponding GoodJob record happen inside a **single database transaction**. This is possible because GoodJob stores jobs in Postgres — the same database as GoodPipeline's tables.
 
 If the transaction rolls back, both the step status revert and the GoodJob record insertion are cancelled atomically. No stuck-enqueued steps, no ghost jobs.
+
+The same immediate-insertion requirement applies to callback, reconciliation, step-finished, and chain-propagation jobs. GoodPipeline validates the effective adapter at boot and again for each job class at enqueue time, including per-job adapter and enqueue-deferral overrides.
+
+For an effective in-process GoodJob mode, `GoodJob.configuration.poll_interval` must be greater than zero. A local worker can wake before the surrounding transaction commits and see no job; GoodJob suppresses `NOTIFY` when it creates that local worker, so LISTEN/NOTIFY alone cannot recover the miss. Configured `:async` or `:async_server` processes that GoodJob treats as external do not need a poller.
+
+Effective Active Job deferral follows the supported Rails implementation, not the raw GoodJob setting:
+
+| Rails | Effective deferral |
+|---|---|
+| 7.2 | `:always` defers, `:never` does not, and the default delegates to `adapter.enqueue_after_transaction_commit?` |
+| 8.0 | `:always` and `true` defer; `:never`, `:default`, and `false` do not |
+| 8.1+ | The class setting is tested by truthiness: `false` and `nil` are immediate; symbols including `:always`, `:never`, and `:default` defer |
+
+Any effective deferral is rejected because it would move GoodJob insertion outside the transaction and lose batch or durable-handoff coupling.
 
 ## Concurrency safety
 
@@ -159,11 +183,25 @@ If two upstream steps of a shared downstream complete simultaneously, both coord
 
 ### Callback exactly-once
 
-`dispatch_callbacks_once` runs inside the same `FOR UPDATE` locked transaction that writes the terminal status, with the `callbacks_dispatched_at` timestamp as a guard. Even if `recompute_pipeline_status` is called concurrently from multiple code paths, the callback bundle fires exactly once.
+`dispatch_callbacks_once` runs inside the same `FOR UPDATE` locked transaction that writes the terminal status, with the `callbacks_dispatched_at` timestamp as a guard. Even if `recompute_pipeline_status` is called concurrently from multiple code paths, the callback bundle is reserved once. Callback job execution remains at least once, as described in [Lifecycle Callbacks](/callbacks#exactly-once-guarantee).
+
+### Lock order and atomic units
+
+Paths that need both existing pipeline and step rows lock the pipeline first and step rows second; multiple pipeline rows are locked in primary-key order. Chain propagation never holds a downstream row while acquiring upstream rows, and cleanup locks candidates in primary-key order with `SKIP LOCKED`. This avoids a downstream-to-upstream inversion against chain registration, which takes sorted upstream locks before any contended downstream operation.
+
+The important transaction boundaries are:
+
+- Graph creation commits the pipeline record, steps, dependencies, and pipeline-level batch together; root startup is a separate transaction so graph identity survives an infrastructure failure during startup.
+- A root or downstream start couples the conditional `pending` to `enqueued` transition with its GoodJob insertion while holding pipeline-then-step locks.
+- A completion claim, dependent-count updates, failure strategy, and halt propagation commit together; terminal recomputation is idempotent and serialized separately on the pipeline row.
+- Terminal status, callback reservation, and all outgoing chain-propagation reservations commit together.
+- Chain registration commits new downstream graphs, incoming edges, and propagation reservations for already-terminal upstreams together.
+- Cancellation commits its claim, pending-step skips, settlement, callback reservation, and any terminal propagation reservations together.
+- Cleanup locks eligible terminal pipelines and deletes their graph together, while excluding upstreams required by pending chain relationships.
 
 ## Retry model
 
-GoodPipeline never inspects exceptions during retry attempts. It only responds to the **terminal signal** from the step batch's `on_finish` callback:
+For a user job that reached GoodJob, GoodPipeline never inspects exceptions during retry attempts. It responds only to the **terminal signal** from the step batch's `on_finish` callback:
 
 | GoodJob outcome | GoodPipeline response |
 |---|---|
@@ -174,11 +212,13 @@ GoodPipeline never inspects exceptions during retry attempts. It only responds t
 
 This ensures a step is never prematurely marked `failed` on attempt 1 of 5.
 
+Deterministic failures that occur before insertion are the separate case described above: they are recorded immediately because no GoodJob attempt or future batch callback exists.
+
 ## Design decisions
 
 1. Postgres only -- all state in Postgres, which is what makes atomic enqueue transactions possible
 2. One batch per step -- user jobs are enqueued via `perform_later`, so all ActiveJob semantics (instrumentation, callbacks, retries, `discard_on`) work as expected
-3. Terminal signal comes from `batch.succeeded?`, not exception rescue
+3. A started job's terminal signal comes from `batch.succeeded?`, not exception rescue; deterministic pre-insertion failures use the coordinated start-failure path
 4. `coordination_status` is the sole decision input -- the coordinator reads only this column
 5. `:halted` is policy-driven -- set via `halt_triggered` flag, not pattern-derived
 6. The coordinator owns all transitions; `StepFinishedJob` is a thin dispatcher

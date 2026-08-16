@@ -44,9 +44,11 @@ Note: `on_failure` does **not** fire for `skipped` pipelines. Being skipped by a
 
 ## Asynchronous dispatch
 
-Callbacks are dispatched via `PipelineCallbackJob`, a GoodJob job enqueued **in the same transaction** that records the terminal state and executed by GoodJob only after that transaction commits (workers see committed rows only). A slow external call (Slack, webhooks) cannot stall the coordinator, callback execution cannot corrupt pipeline state, and callbacks get GoodJob's retry mechanism if they fail.
+Callbacks are dispatched via `PipelineCallbackJob`, a GoodJob job enqueued **in the same transaction** that records the terminal state and executed by GoodJob only after that transaction commits (workers see committed rows only). A slow external call (Slack, webhooks) cannot stall the coordinator, callback execution cannot corrupt pipeline state, and failures remain visible in GoodJob for application-policy or manual retry.
 
-`PipelineCallbackJob` runs on the queue configured by `callback_queue_name` (default: `"good_pipeline_callbacks"`). This is separate from `coordination_queue_name` which controls the coordination jobs (`StepFinishedJob`, `PipelineReconciliationJob`), so slow callbacks don't block pipeline progression. See [Defining Pipelines](/defining-pipelines) for configuration options.
+`PipelineCallbackJob` runs on the queue configured by `callback_queue_name` (default: `"good_pipeline_callbacks"`). This is separate from `coordination_queue_name`, which controls `StepFinishedJob`, `PipelineReconciliationJob`, and durable `ChainPropagationJob` handoffs, so slow callbacks don't block pipeline progression. See [Defining Pipelines](/defining-pipelines) for configuration options.
+
+Callback reservation and chain propagation are separate concerns even though both run during terminal settlement. With a valid callback configuration, the terminal status, guarded callback job, and one propagation job per outgoing edge are inserted in the same database transaction, so a process exit immediately after commit loses neither kind of work. Chain propagation is mandatory: failure to persist an edge handoff rolls back settlement. The existing callback-isolation rule is different—a callback adapter/configuration rejection is logged and marks that bundle dispatched rather than preventing the pipeline from settling.
 
 ## Exactly-once guarantee
 
@@ -60,7 +62,7 @@ One boundary of that guarantee is worth knowing: **dispatch is exactly-once; exe
 
 If a callback method raises an error:
 
-- The `PipelineCallbackJob` fails and is retried by GoodJob
+- The `PipelineCallbackJob` records the failure in GoodJob and can be retried under application policy or from GoodJob's dashboard
 - Pipeline status and step statuses are **not** affected
 - The pipeline remains in its terminal state
 - Other callback methods in the same bundle are still attempted

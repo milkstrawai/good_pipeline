@@ -83,4 +83,70 @@ class TestRunner < ActiveSupport::TestCase
 
     assert_not_nil record.good_job_batch_id
   end
+
+  def test_post_persistence_start_error_retains_the_created_pipeline_identity_and_cause
+    instance = TestPipeline.build(video_id: 42)
+    original_error = RuntimeError.new("database unavailable: password=do-not-expose")
+
+    error = assert_raises(GoodPipeline::PipelineStartError) do
+      with_stubbed_singleton_method(
+        GoodPipeline::Coordinator,
+        :bulk_enqueue_steps,
+        ->(_step_ids) { raise original_error }
+      ) do
+        GoodPipeline::Runner.call(instance)
+      end
+    end
+
+    pipeline = GoodPipeline::PipelineRecord.find(error.pipeline_id)
+
+    assert_same original_error, error.original_error
+    assert_same original_error, error.cause
+    refute_includes error.message, original_error.message
+    assert_equal 3, pipeline.steps.count
+    assert_equal 2, pipeline.dependencies.count
+    assert GoodJob::BatchRecord.exists?(pipeline.good_job_batch_id)
+  end
+
+  def test_good_job_insertion_failure_is_not_recorded_as_a_user_step_failure
+    instance = TestPipeline.build(video_id: 42)
+    original_error = ActiveRecord::ConnectionNotEstablished.new("injected GoodJob insertion outage")
+
+    error = assert_raises(GoodPipeline::PipelineStartError) do
+      with_stubbed_singleton_method(
+        GoodJob::Batch,
+        :enqueue_all,
+        ->(_batch_job_pairs) { raise original_error }
+      ) do
+        GoodPipeline::Runner.call(instance)
+      end
+    end
+
+    pipeline = GoodPipeline::PipelineRecord.find(error.pipeline_id)
+
+    assert_same original_error, error.original_error
+    assert_same original_error, error.cause
+    assert_equal "running", pipeline.status
+    assert pipeline.steps.all?(&:pending?)
+    assert pipeline.steps.all? { |step| step.error_class.nil? && step.error_message.nil? }
+    assert_equal 0, GoodJob::Job.where(job_class: %w[DownloadJob TranscodeJob ThumbnailJob]).count
+  end
+
+  def test_reconciliation_adapter_is_validated_before_graph_or_batch_persistence
+    instance = TestPipeline.build(video_id: 42)
+    original_adapter = GoodPipeline::PipelineReconciliationJob.queue_adapter
+    pipeline_count = GoodPipeline::PipelineRecord.count
+    batch_count = GoodJob::BatchRecord.count
+    GoodPipeline::PipelineReconciliationJob.queue_adapter = ActiveJob::QueueAdapters::TestAdapter.new
+
+    error = assert_raises(GoodPipeline::ConfigurationError) do
+      GoodPipeline::Runner.call(instance)
+    end
+
+    assert_match(/requires a GoodJob adapter/, error.message)
+    assert_equal pipeline_count, GoodPipeline::PipelineRecord.count
+    assert_equal batch_count, GoodJob::BatchRecord.count
+  ensure
+    GoodPipeline::PipelineReconciliationJob.queue_adapter = original_adapter if original_adapter
+  end
 end

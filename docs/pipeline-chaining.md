@@ -85,23 +85,41 @@ Pipeline chaining is a first-class primitive — upstream/downstream relationshi
 
 `.then` returns a `GoodPipeline::Chain` object which:
 
-1. Creates downstream pipeline records with `status: pending` — params are stored immediately at chain registration time
-2. Creates `good_pipeline_chains` rows linking upstream to downstream pipeline IDs
-3. If any upstream has already reached a terminal state, immediately triggers chain propagation so the downstream is started or skipped
-4. After any upstream pipeline reaches a terminal state, the chain coordinator checks if all upstreams for each downstream have succeeded
-5. If all upstreams succeeded, the downstream pipeline starts (root steps are enqueued)
-6. If any upstream fails, halts, or is skipped, the downstream pipeline is set to `skipped`
+1. Builds every requested downstream graph, then creates its `pending` pipeline, steps, and dependencies inside one transaction
+2. Locks all upstream pipeline rows in primary-key order, then creates every incoming edge while those locks are held
+3. Before that transaction commits, inserts one durable `ChainPropagationJob` for each new edge whose upstream is already terminal
+4. When an upstream later settles, commits its terminal status and one propagation job per outgoing edge in the same database transaction
+5. Each propagation job reloads its edge and all current statuses; if every upstream succeeded it starts the downstream, and if any failed, halted, or was skipped it skips the downstream
 
-The chain coordinator locks the downstream pipeline row with a **blocking `FOR UPDATE`** to prevent double-start races. Blocking rather than skipping is deliberate: two upstreams settling at once must not both decline to start their shared downstream, which would strand it `pending` forever. `.then` registers a downstream and all of its incoming edges in one transaction, so a concurrent propagation can never evaluate a partially registered fan-in — which is what makes `.then` safe to call at any time, even after the upstream has already completed.
+Propagation is durable and at least once. The terminal transition and GoodJob row share a transaction: rollback removes both; commit makes both visible. Jobs carry immutable chain-record IDs and reload state when they run. Duplicate or concurrent deliveries lock the downstream with a **blocking `FOR UPDATE`** and require it still to be `pending`, so exactly one delivery can start or skip it and enqueue its roots.
+
+Registration and settlement use the same upstream-row lock as a handshake. If registration locks first, settlement later sees the committed edge. If settlement locks first, registration waits, then sees the terminal status and creates a propagation job itself. Multiple upstream rows are always locked by primary key, preventing fan-in lock inversion. A job is scoped to one edge, so a transiently broken downstream does not block unrelated downstreams of the same upstream.
 
 ## Failure propagation
 
 If any upstream pipeline in a chain fails, halts, or is skipped:
 
 - The downstream pipeline transitions to `skipped`
-- Any further downstream pipelines are also recursively `skipped`
+- Each further downstream pipeline is skipped by its own durable propagation job
 - `on_complete` callbacks fire on skipped pipelines, but `on_failure` does **not** — being skipped is not considered a failure
 
 ```
 A (failed) → B (skipped) → C (skipped) → D (skipped)
 ```
+
+## Recovering chains stranded before 0.5.0 hardening
+
+Executions already stranded by the former in-memory handoff have no historical propagation job. After deploying this fix, reserve fresh jobs idempotently from a Rails runner; duplicate jobs are safe:
+
+```ruby
+GoodPipeline::PipelineRecord
+  .where(status: GoodPipeline::PipelineRecord::TERMINAL_STATUSES)
+  .find_each do |pipeline|
+    GoodPipeline::PipelineRecord.transaction do
+      locked = GoodPipeline::PipelineRecord.lock("FOR UPDATE").find(pipeline.id)
+      GoodPipeline::ChainCoordinator.reserve_terminal_state!(locked)
+    end
+  end
+```
+
+Cleanup retains a terminal upstream while any linked downstream is still `pending`, so the status and edge needed by this recovery are not removed.

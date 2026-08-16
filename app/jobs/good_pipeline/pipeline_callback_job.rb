@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module GoodPipeline
-  class PipelineCallbackJob < ActiveJob::Base
+  class PipelineCallbackJob < InternalJob
     CALLBACK_STATUSES = PipelineRecord::TERMINAL_STATUSES
 
     def perform(pipeline_id, terminal_status) # rubocop:disable Metrics/AbcSize, Metrics/MethodLength

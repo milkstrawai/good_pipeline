@@ -130,6 +130,10 @@ end
 # "branch :check decision returned "unknown", but only :hd, :sd are declared"
 ```
 
+If the decision method itself raises a normal application exception, the branch step is likewise failed through the coordinated path, but its `error_class` and `error_message` preserve the original exception rather than replacing it with `ConfigurationError`. Dependent counts, branch-arm skips, halt propagation, and terminal settlement are applied exactly as for another deterministic step-start failure, so the execution remains inspectable instead of staying `running` indefinitely.
+
+Only the user method invocation is normalized this way. GoodPipeline's own database, locking, and GoodJob persistence operations remain outside that rescue boundary and escape as infrastructure failures rather than being mislabeled as business failures. Process-level exceptions such as `Interrupt` and `SystemExit` are not converted into step outcomes.
+
 ## Limitations
 
 - **Nested branches** (a branch inside another branch's arm) are not supported. This is validated and rejected with a `ConfigurationError`.

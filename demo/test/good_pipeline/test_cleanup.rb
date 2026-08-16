@@ -77,6 +77,43 @@ class TestCleanup < ActiveSupport::TestCase
     assert_nil GoodPipeline::ChainRecord.find_by(id: chain.id)
   end
 
+  test "preserves terminal upstream and edge while durable propagation is unconsumed" do
+    downstream = GoodPipeline::PipelineRecord.create!(
+      type: "TestPipeline", status: "pending", on_failure_strategy: "halt"
+    )
+    chain = GoodPipeline::ChainRecord.create!(
+      upstream_pipeline: @old_pipeline, downstream_pipeline: downstream
+    )
+    GoodPipeline::PipelineRecord.transaction do
+      locked = GoodPipeline::PipelineRecord.lock("FOR UPDATE").find(@old_pipeline.id)
+      GoodPipeline::ChainCoordinator.reserve_terminal_state!(locked)
+    end
+
+    GoodPipeline.cleanup_preserved_pipelines(older_than: @now - 14.days)
+
+    assert GoodPipeline::PipelineRecord.exists?(@old_pipeline.id)
+    assert GoodPipeline::PipelineRecord.exists?(downstream.id)
+    assert GoodPipeline::ChainRecord.exists?(chain.id)
+    assert GoodJob::Job.where(job_class: "GoodPipeline::ChainPropagationJob", finished_at: nil).any? { |job|
+      job.serialized_params.fetch("arguments").first.to_s == chain.id.to_s
+    }
+  end
+
+  test "terminal upstream becomes eligible after downstream leaves pending" do
+    downstream = GoodPipeline::PipelineRecord.create!(
+      type: "TestPipeline", status: "running", on_failure_strategy: "halt"
+    )
+    chain = GoodPipeline::ChainRecord.create!(
+      upstream_pipeline: @old_pipeline, downstream_pipeline: downstream
+    )
+
+    GoodPipeline.cleanup_preserved_pipelines(older_than: @now - 14.days)
+
+    refute GoodPipeline::PipelineRecord.exists?(@old_pipeline.id)
+    assert GoodPipeline::PipelineRecord.exists?(downstream.id)
+    refute GoodPipeline::ChainRecord.exists?(chain.id)
+  end
+
   test "noop when nothing to clean" do
     GoodPipeline.cleanup_preserved_pipelines(older_than: @now - 365.days)
 

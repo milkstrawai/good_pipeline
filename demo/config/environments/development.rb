@@ -7,8 +7,8 @@ Rails.application.configure do
   config.active_support.deprecation = :log
   config.good_job.execution_mode = :async
   # GoodJob defaults a development async mode to poll_interval -1, which disables
-  # the poller. LISTEN/NOTIFY alone would still carry the dev server (see the
-  # boot check in lib/good_pipeline.rb), but a live poller is the durable wakeup
-  # and costs nothing here.
-  config.good_job.poll_interval = 1
+  # the poller. GoodPipeline requires positive polling because a local worker can
+  # wake before an enqueue transaction commits and suppress the corresponding
+  # NOTIFY; LISTEN/NOTIFY alone cannot recover that miss.
+  config.good_job.poll_interval = 10
 end

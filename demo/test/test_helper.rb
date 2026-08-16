@@ -49,6 +49,34 @@ module ActiveSupport
       end
     end
 
+    # Minitest 6 no longer ships Object#stub. Keep failure injection narrow by
+    # replacing one singleton method for the duration of a block and restoring
+    # exactly the method (or inherited lookup) that was present before it.
+    def with_stubbed_singleton_method(target, method_name, replacement) # rubocop:disable Metrics/MethodLength
+      singleton_class = target.singleton_class
+      directly_defined = singleton_class.method_defined?(method_name, false) ||
+                         singleton_class.private_method_defined?(method_name, false) ||
+                         singleton_class.protected_method_defined?(method_name, false)
+      visibility = if singleton_class.private_method_defined?(method_name, false)
+                     :private
+                   elsif singleton_class.protected_method_defined?(method_name, false)
+                     :protected
+                   else
+                     :public
+                   end
+      original = singleton_class.instance_method(method_name) if directly_defined
+      singleton_class.define_method(method_name, replacement)
+      singleton_class.send(visibility, method_name) if directly_defined
+      yield
+    ensure
+      if directly_defined
+        singleton_class.define_method(method_name, original)
+        singleton_class.send(visibility, method_name)
+      elsif singleton_class
+        singleton_class.remove_method(method_name)
+      end
+    end
+
     def perform_enqueued_jobs_inline
       GoodJob.perform_inline
     end

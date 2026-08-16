@@ -8,6 +8,8 @@ GoodPipeline subscribes to GoodJob's `cleanup_preserved_jobs` ActiveSupport noti
 
 It uses GoodJob's existing retention period (default 14 days), runs whenever GoodJob's cleanup runs, and only touches terminal pipelines (`succeeded`, `failed`, `halted`, `skipped`). Running and pending pipelines are never deleted.
 
+A terminal upstream is also retained while any linked downstream is still `pending`. Its status and chain edge are authoritative prerequisites for the durable propagation job; deleting either could strand the downstream or make fan-in appear satisfied with too few upstreams. Once propagation starts or skips the downstream, normal age-based cleanup can remove the old upstream on a later sweep.
+
 ## What gets cleaned
 
 When a pipeline is cleaned up, the following records are deleted:
@@ -18,6 +20,8 @@ When a pipeline is cleaned up, the following records are deleted:
 4. `good_pipeline_pipelines` — pipeline records
 
 Records are deleted in dependency order using `delete_all` (no callbacks) for performance.
+
+Eligible pipeline rows are locked in primary-key order with `FOR UPDATE SKIP LOCKED`, then rechecked and deleted in one transaction. A row held by settlement, chain registration, cancellation, or another cleanup worker is deferred to a later sweep rather than blocking cleanup or racing a state transition.
 
 ## Configuring the retention period
 
@@ -38,4 +42,6 @@ You can trigger cleanup manually at any time:
 GoodPipeline.cleanup_preserved_pipelines(older_than: 7.days.ago)
 ```
 
-This deletes all terminal pipelines (and their associated steps, dependencies, and chains) created before the given timestamp.
+This deletes all terminal pipelines (and their associated steps, dependencies, and chains) last updated before the given timestamp.
+
+The pending-chain retention rule still applies to manual cleanup. Deployments upgrading from the former in-memory chain handoff should first use the idempotent recovery procedure in [Pipeline Chaining](/pipeline-chaining#recovering-chains-stranded-before-050-hardening); cleanup deliberately retains the records that procedure needs.

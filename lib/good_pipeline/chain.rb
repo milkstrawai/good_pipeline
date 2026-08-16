@@ -17,30 +17,12 @@ module GoodPipeline
       @pipeline_records = Array(pipeline_records)
     end
 
-    def then(*arguments) # rubocop:disable Metrics/MethodLength
-      configs = normalize_arguments(arguments)
-      downstream_records = []
-
-      configs.each do |pipeline_class, pipeline_params|
-        instance = pipeline_class.build(**pipeline_params)
-
-        # The downstream and all of its incoming edges become visible together,
-        # so a concurrently propagating settlement can never pass the
-        # all-upstreams check against a partially registered fan-in.
-        downstream_record = PipelineRecord.transaction do
-          record = Runner.call(instance, start: false)
-          @pipeline_records.each do |upstream_record|
-            ChainRecord.create!(upstream_pipeline: upstream_record, downstream_pipeline: record)
-          end
-          record
-        end
-
-        downstream_records << downstream_record
+    def then(*arguments)
+      instances = normalize_arguments(arguments).map do |pipeline_class, pipeline_params|
+        pipeline_class.build(**pipeline_params)
       end
 
-      propagate_if_upstream_already_terminal
-
-      Chain.new(downstream_records)
+      Chain.new(register_downstreams(instances))
     end
 
     private
@@ -49,10 +31,52 @@ module GoodPipeline
       @pipeline_records.first
     end
 
-    def propagate_if_upstream_already_terminal
-      @pipeline_records.each do |upstream_record|
-        ChainCoordinator.propagate_terminal_state(upstream_record) if upstream_record.reload.terminal?
+    # One transaction owns the full fan-out registration: every downstream
+    # graph, all incoming edges, and durable propagation for already-terminal
+    # upstreams. The downstream rows are new and cannot be contended, so existing
+    # pipeline locks are taken only after graph insertion and always by sorted id.
+    def register_downstreams(instances) # rubocop:disable Metrics/MethodLength
+      PipelineRecord.transaction do
+        downstream_records = instances.map { |instance| Runner.call(instance, start: false) }
+        locked_upstreams = lock_upstreams!
+        edge_ids_by_upstream = create_incoming_edges(locked_upstreams, downstream_records)
+
+        locked_upstreams.each do |upstream|
+          next unless upstream.terminal?
+
+          ChainCoordinator.reserve_terminal_state!(
+            upstream,
+            chain_ids: edge_ids_by_upstream.fetch(upstream.id)
+          )
+        end
+
+        downstream_records
       end
+    end
+
+    # Settlement and cleanup take the same upstream pipeline-row lock. Thus
+    # registration either commits its edge before settlement inspects outgoing
+    # edges, or waits and observes terminal state before reserving its own job.
+    def lock_upstreams!
+      ids = @pipeline_records.filter_map(&:id).uniq.sort
+      records = PipelineRecord.where(id: ids).order(:id).lock("FOR UPDATE").to_a
+      return records if records.size == ids.size
+
+      missing_ids = ids - records.map(&:id)
+      raise ActiveRecord::RecordNotFound, "upstream pipeline(s) no longer exist: #{missing_ids.join(", ")}"
+    end
+
+    def create_incoming_edges(upstreams, downstreams)
+      edge_ids_by_upstream = upstreams.to_h { |upstream| [upstream.id, []] }
+
+      downstreams.each do |downstream|
+        upstreams.each do |upstream|
+          edge = ChainRecord.create!(upstream_pipeline: upstream, downstream_pipeline: downstream)
+          edge_ids_by_upstream.fetch(upstream.id) << edge.id
+        end
+      end
+
+      edge_ids_by_upstream
     end
 
     def normalize_arguments(arguments)

@@ -10,7 +10,7 @@ module GoodPipeline
         validate_decision_method!(pipeline_class, decides_method, step)
 
         instance = pipeline_class.reconstruct(step.pipeline)
-        result = instance.send(decides_method).to_s
+        result = invoke_decision_method(instance, decides_method).to_s
 
         validate_result!(step, result)
 
@@ -29,13 +29,21 @@ module GoodPipeline
 
       private
 
-      # Normalized so the coordinator's failure handler records a missing
-      # pipeline class on the step instead of the NameError escaping
-      # StepFinishedJob.
+      # Rescue only application code. Class resolution, branch queries, and
+      # persistence remain outside this boundary so infrastructure failures are
+      # never mislabeled as a branch decision outcome.
+      def invoke_decision_method(instance, decides_method)
+        instance.send(decides_method)
+      rescue StandardError => error
+        raise DeterministicStepStartError.new(error), cause: error
+      end
+
+      # Normalized so the coordinator records a missing pipeline class on the
+      # step while preserving the lookup NameError as metadata and cause.
       def resolve_pipeline_class(step)
         step.pipeline.type.constantize
       rescue NameError => error
-        raise ConfigurationError, error.message
+        raise DeterministicStepStartError.new(error), cause: error
       end
 
       def validate_decision_method!(pipeline_class, decides_method, step)
