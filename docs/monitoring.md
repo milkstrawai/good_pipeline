@@ -41,10 +41,12 @@ step.duration             # => 12.34 (Float seconds, from GoodJob record)
 |---|---|
 | `pending` | Created but root steps not yet enqueued — waiting in a chain |
 | `running` | At least one step is enqueued or executing |
+| `canceling` | Cancellation requested; no future steps will be scheduled, but enqueued work is still draining — nonterminal |
 | `succeeded` | All steps terminal, none failed |
 | `failed` | One or more steps failed; `:continue` or `:ignore` strategy was used |
 | `halted` | `:halt` strategy was applied — `halt_triggered` is `true` |
 | `skipped` | Skipped because an upstream pipeline in a chain failed |
+| `canceled` | Cancellation completed, or a pending pipeline was canceled before it started — terminal |
 
 ## Step statuses
 
@@ -58,6 +60,9 @@ The `coordination_status` column is the authoritative step state:
 | `failed` | Job exhausted retries or was discarded — terminal |
 | `skipped` | Skipped due to upstream failure propagation — terminal |
 | `skipped_by_branch` | Branch decision selected a different arm — terminal, counts as satisfied for downstream |
+| `canceled` | Never enqueued because pipeline cancellation stopped future scheduling — terminal |
+
+Cancellation does not rewrite the status of an already-enqueued step. Such a job runs normally and retains its actual `succeeded`, `failed`, or `halted` outcome.
 
 ## Querying with ActiveRecord
 
@@ -77,8 +82,8 @@ GoodPipeline::PipelineRecord
     coordination_status: "failed"
   })
 
-# Running pipelines
-GoodPipeline::PipelineRecord.where(status: "running")
+# Active pipelines, including cancellation that is still draining
+GoodPipeline::PipelineRecord.where(status: %w[running canceling])
 ```
 
 ## Step associations

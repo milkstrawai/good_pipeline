@@ -7,10 +7,10 @@ module GoodPipeline
   class StepRecord < ActiveRecord::Base
     self.table_name = "good_pipeline_steps"
 
-    TERMINAL_COORDINATION_STATUSES = %w[succeeded failed skipped skipped_by_branch halted].freeze
+    TERMINAL_COORDINATION_STATUSES = %w[succeeded failed skipped skipped_by_branch halted canceled].freeze
 
     VALID_COORDINATION_TRANSITIONS = {
-      "pending" => %w[enqueued skipped skipped_by_branch succeeded failed halted],
+      "pending" => %w[enqueued skipped skipped_by_branch succeeded failed halted canceled],
       "enqueued" => %w[succeeded failed halted]
     }.freeze
 
@@ -21,7 +21,8 @@ module GoodPipeline
       failed: "failed",
       skipped: "skipped",
       skipped_by_branch: "skipped_by_branch",
-      halted: "halted"
+      halted: "halted",
+      canceled: "canceled"
     }
 
     enum :on_failure_strategy, { halt: "halt", continue: "continue", ignore: "ignore" }

@@ -31,6 +31,18 @@ class TestCoordinator < ActiveSupport::TestCase
     assert_equal "succeeded", step.reload.coordination_status
   end
 
+  def test_terminal_step_redelivery_repairs_running_pipeline_status
+    pipeline = create_pipeline(on_failure_strategy: "halt")
+    pipeline.update_columns(status: "running")
+    step = build_step(pipeline, key: "a")
+    step.update_columns(coordination_status: "succeeded")
+
+    GoodPipeline::Coordinator.complete_step(step.id, succeeded: true)
+
+    assert_equal "succeeded", pipeline.reload.status
+    refute_nil pipeline.callbacks_dispatched_at
+  end
+
   # --- complete_step: succeeded ---
 
   def test_complete_step_succeeded_transitions
@@ -125,6 +137,14 @@ class TestCoordinator < ActiveSupport::TestCase
     GoodPipeline::Coordinator.recompute_pipeline_status(pipeline.reload)
 
     assert_equal "succeeded", pipeline.reload.status
+  end
+
+  def test_recompute_rejects_removed_activity_hints
+    pipeline = create_pipeline(on_failure_strategy: "halt")
+
+    assert_raises(ArgumentError) do
+      GoodPipeline::Coordinator.recompute_pipeline_status(pipeline, has_active_steps: true)
+    end
   end
 
   # --- dispatch_callbacks_once ---
@@ -261,6 +281,24 @@ class TestCoordinator < ActiveSupport::TestCase
 
   # --- try_enqueue_step ---
 
+  def test_try_enqueue_batch_includes_pipeline_ownership
+    pipeline = create_pipeline(on_failure_strategy: "halt")
+    pipeline.update_columns(status: "running")
+    step = build_step(pipeline, key: "a")
+
+    GoodPipeline::Coordinator.try_enqueue_step(step.id)
+
+    batch = GoodJob::BatchRecord.find(step.reload.good_job_batch_id)
+
+    assert_equal({ step_id: step.id, pipeline_id: pipeline.id }, batch.properties)
+  end
+
+  def test_try_enqueue_returns_false_for_missing_step
+    result = GoodPipeline::Coordinator.try_enqueue_step(SecureRandom.uuid)
+
+    refute result
+  end
+
   def test_try_enqueue_bails_on_non_pending_step
     pipeline = create_pipeline(on_failure_strategy: "halt")
     step = build_step(pipeline, key: "a")
@@ -293,6 +331,7 @@ class TestCoordinator < ActiveSupport::TestCase
 
   def test_try_enqueue_skips_permanently_unsatisfied_step
     pipeline = create_pipeline(on_failure_strategy: "continue")
+    pipeline.update_columns(status: "running")
     step_a = build_step(pipeline, key: "a")
     step_b = build_step(pipeline, key: "b", dependencies: [step_a])
     step_a.update_columns(coordination_status: "failed")

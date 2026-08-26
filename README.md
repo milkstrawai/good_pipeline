@@ -185,7 +185,7 @@ GoodPipeline.run(
 ).then(MergeMediaPipeline, with: { video_id: 123, audio_id: 456 })
 ```
 
-If an upstream pipeline fails or halts, downstream pipelines are automatically skipped.
+If an upstream pipeline fails, halts, is canceled, or is skipped, downstream pipelines are automatically skipped.
 
 ### Monitoring
 
@@ -220,8 +220,20 @@ GoodPipeline includes a mountable web dashboard for inspecting pipeline executio
 
 ```ruby
 # config/routes.rb
+# Protect this mount with your application's administrator authentication.
 mount GoodPipeline::Engine => "/good_pipeline"
 ```
+
+The engine does not provide authentication. Treat the dashboard as an admin-only interface and see [Securing the dashboard](docs/dashboard.md#securing-the-dashboard) for mount examples.
+
+Pipeline mutation controls are read-only by default. After protecting the mount, enable cancellation explicitly:
+
+```ruby
+# config/initializers/good_pipeline.rb
+GoodPipeline.dashboard_mutations_enabled = true
+```
+
+This setting only enables dashboard actions; it does not authenticate or authorize visitors. The theme preference remains available while pipeline mutations are disabled.
 
 The dashboard provides:
 
@@ -233,6 +245,12 @@ The dashboard provides:
 Dark is the default theme in 0.5. The topbar toggle persists a light or dark preference in a permanent same-site cookie. Dashboard styles and JavaScript ship with the gem; Mermaid and web fonts are loaded from their CDNs, so there is no application-side asset build step.
 
 Large executions remain readable: rows with more than 12 steps use an aggregate status bar, and DAGs with more than 60 steps initially show a stage view. A full graph remains available up to Mermaid's 1,000-edge safety limit. Above that limit, the stage view stays available and full rendering is disabled explicitly.
+
+### Canceling a pipeline
+
+Dashboard cancellation is graceful: it stops future DAG scheduling, not work already handed to GoodJob. A pending pipeline becomes `canceled` immediately. A running pipeline becomes `canceling`, and its `pending` steps become `canceled`; jobs that are already enqueued, scheduled, or retrying run normally and retain their actual `succeeded`, `failed`, or `halted` outcomes. No GoodJob records are changed and no worker is force-terminated.
+
+After the last enqueued job finishes, the pipeline becomes `canceled`. Until then, `canceling` is an active, nonterminal state. A pipeline can remain `canceling` indefinitely if an enqueued job never reaches a terminal outcome.
 
 ### Pipeline Executions
 
@@ -250,7 +268,7 @@ Large executions remain readable: rows with more than 12 steps use an aggregate 
 
 GoodPipeline automatically cleans up old terminal pipelines when GoodJob runs its own cleanup cycle. No configuration needed, it uses GoodJob's retention period (default 14 days).
 
-Pending and running pipelines are intentionally retained. GoodJob may still remove old job rows belonging to a long-running pipeline, so timing for those steps appears as `—` in the dashboard after the retention window; the pipeline and step coordination records remain available.
+Pending, running, and canceling pipelines are intentionally retained; canceled pipelines are terminal and follow the normal retention window. GoodJob may still remove old job rows belonging to a long-running or canceling pipeline, so timing for those steps appears as `—` in the dashboard after the retention window; the pipeline and step coordination records remain available.
 
 To configure the retention period, set GoodJob's option:
 

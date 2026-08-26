@@ -75,6 +75,14 @@ class TestPipelinesHelper < Minitest::Test
     assert_includes result, "\u25CB Pending"
   end
 
+  def test_cancellation_status_helpers_use_distinct_labels_and_colors
+    assert_includes status_badge(:canceling), "\u25D0 Canceling"
+    assert_includes status_badge(:canceled), "\u2298 Canceled"
+    assert_equal "--st-canceling", status_meta(:canceling)[:var]
+    assert_equal "--st-canceled", status_meta(:canceled)[:var]
+    assert_includes status_pill(:canceled), "gp-status-canceled"
+  end
+
   # --- relative_time ---
 
   def test_relative_time_nil_returns_empty
@@ -206,6 +214,13 @@ class TestPipelinesHelper < Minitest::Test
     assert_includes result, "graph TD"
     assert_includes result, 'n0("download"):::succeeded'
     refute_includes result, "classDef succeeded"
+  end
+
+  def test_mermaid_diagram_preserves_canceled_step_status
+    step = FakeStep.new(key: "not_started", coordination_status: "canceled", id: 1)
+    pipeline = FakePipeline.new(steps: [step], dependencies: [])
+
+    assert_includes mermaid_diagram(pipeline), 'n0("not_started"):::canceled'
   end
 
   def test_mermaid_uses_generated_ids_and_escapes_untrusted_labels

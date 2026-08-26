@@ -4,6 +4,8 @@ module GoodPipeline
   class PipelinesController < ApplicationController # rubocop:disable Metrics/ClassLength
     PAGE_SIZE = 25
 
+    before_action :require_dashboard_mutations_enabled!, only: :cancel
+
     SidebarEntry = Data.define(
       :type,
       :id,
@@ -81,7 +83,28 @@ module GoodPipeline
       @connection_info = Dashboard::ConnectionInfo.fetch
     end
 
+    def cancel # rubocop:disable Metrics/MethodLength
+      @pipeline = Coordinator.cancel_pipeline(params[:id])
+
+      notice = if @pipeline.status.to_s == "canceled"
+                 "Pipeline canceled."
+               else
+                 "Pipeline cancellation requested."
+               end
+      redirect_back fallback_location: pipeline_path(@pipeline), allow_other_host: false,
+                    notice: notice, status: :see_other
+    rescue GoodPipeline::CancellationConflict => error
+      redirect_back fallback_location: pipeline_path(error.pipeline_id),
+                    allow_other_host: false,
+                    alert: "Pipeline is already #{error.status} and cannot be canceled.",
+                    status: :see_other
+    end
+
     private
+
+    def require_dashboard_mutations_enabled!
+      head :forbidden unless GoodPipeline.dashboard_mutations_enabled?
+    end
 
     def apply_type_time_search(scope)
       scope = scope.where(type: @filters.pipeline_type) if @filters.pipeline_type

@@ -60,7 +60,7 @@
       </div>
     <% else %>
       <div class="gp-timeline">
-        <% status_order = %w[succeeded failed halted enqueued running pending skipped skipped_by_branch] %>
+        <% status_order = %w[succeeded failed halted enqueued running pending canceled skipped skipped_by_branch] %>
         <% stages.each do |stage| %>
           <%
             counts = get.call(stage, :counts) || {}

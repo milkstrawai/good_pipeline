@@ -158,6 +158,37 @@ class TestPipelineChaining < ActiveSupport::TestCase
     assert_equal "skipped", archive.status
   end
 
+  def test_canceling_pending_upstream_automatically_skips_downstream
+    upstream = create_pipeline(type: "TestPipeline", status: "pending", on_failure_strategy: "halt")
+    upstream_step = build_step(upstream, key: "work")
+    downstream = create_pipeline(type: "NotificationPipeline", status: "pending", on_failure_strategy: "halt")
+    GoodPipeline::ChainRecord.create!(upstream_pipeline: upstream, downstream_pipeline: downstream)
+
+    GoodPipeline::Coordinator.cancel_pipeline(upstream.id)
+
+    assert_equal "canceled", upstream.reload.status
+    assert_equal "canceled", upstream_step.reload.coordination_status
+    assert_equal "skipped", downstream.reload.status
+  end
+
+  def test_canceling_running_upstream_waits_for_drain_before_skipping_downstream
+    upstream = create_pipeline(type: "TestPipeline", status: "running", on_failure_strategy: "halt")
+    upstream_step = build_step(upstream, key: "work")
+    upstream_step.update_columns(coordination_status: "enqueued")
+    downstream = create_pipeline(type: "NotificationPipeline", status: "pending", on_failure_strategy: "halt")
+    GoodPipeline::ChainRecord.create!(upstream_pipeline: upstream, downstream_pipeline: downstream)
+
+    GoodPipeline::Coordinator.cancel_pipeline(upstream.id)
+
+    assert_equal "canceling", upstream.reload.status
+    assert_equal "pending", downstream.reload.status
+
+    GoodPipeline::Coordinator.complete_step(upstream_step.id, succeeded: true)
+
+    assert_equal "canceled", upstream.reload.status
+    assert_equal "skipped", downstream.reload.status
+  end
+
   # --- Callbacks on skipped ---
 
   def test_skipped_pipeline_fires_on_complete_but_not_on_failure

@@ -8,7 +8,7 @@ module GoodPipeline
   class MermaidDiagramBuilder # rubocop:disable Metrics/ClassLength
     MAX_EDGES = 1_000
     MAX_LABEL_LENGTH = 64
-    STATUSES = %w[pending running enqueued succeeded failed halted skipped skipped_by_branch].freeze
+    STATUSES = %w[pending running enqueued succeeded failed halted canceled skipped skipped_by_branch].freeze
     Edge = Struct.new(:upstream, :downstream, keyword_init: true)
     private_constant :Edge
 

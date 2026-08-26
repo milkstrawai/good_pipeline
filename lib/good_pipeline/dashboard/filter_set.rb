@@ -5,7 +5,7 @@ module GoodPipeline
     # Immutable, normalized dashboard query-string state.
     class FilterSet
       TIMES = { "24h" => 24.hours, "7d" => 7.days, "30d" => 30.days, "all" => nil }.freeze
-      STATUSES = %w[all running succeeded failed halted skipped].freeze
+      STATUSES = %w[all running canceling succeeded failed halted canceled skipped].freeze
       DEFAULT_TIME = "all"
 
       attr_reader :status, :pipeline_type, :time, :query, :page, :expanded

@@ -58,7 +58,7 @@ module GoodPipeline
       def aggregate # rubocop:disable Metrics/AbcSize
         connection.select_one(<<~SQL)
           SELECT
-            COUNT(*) FILTER (WHERE p.status = 'running') AS running_now,
+            COUNT(*) FILTER (WHERE p.status IN ('running', 'canceling')) AS running_now,
             COUNT(*) FILTER (WHERE p.created_at > #{quote(@now - 24.hours)}) AS last_24h,
             COUNT(*) FILTER (
               WHERE p.status = 'failed' AND p.created_at > #{quote(@now - 7.days)}
@@ -71,13 +71,13 @@ module GoodPipeline
             percentile_cont(0.5) WITHIN GROUP (
               ORDER BY EXTRACT(EPOCH FROM (p.updated_at - p.created_at))
             ) FILTER (
-              WHERE p.status IN ('succeeded', 'failed', 'halted', 'skipped')
+              WHERE p.status IN ('succeeded', 'failed', 'halted', 'canceled', 'skipped')
                 AND p.created_at > #{quote(@now - 7.days)}
             ) AS p50,
             percentile_cont(0.95) WITHIN GROUP (
               ORDER BY EXTRACT(EPOCH FROM (p.updated_at - p.created_at))
             ) FILTER (
-              WHERE p.status IN ('succeeded', 'failed', 'halted', 'skipped')
+              WHERE p.status IN ('succeeded', 'failed', 'halted', 'canceled', 'skipped')
                 AND p.created_at > #{quote(@now - 7.days)}
             ) AS p95,
             (
@@ -87,7 +87,7 @@ module GoodPipeline
               WHERE s.coordination_status = 'enqueued' #{type_scope("p2")}
             ) AS enqueued_steps
           FROM #{pipeline_table} p
-          WHERE (p.status = 'running' OR p.created_at > #{quote(@now - 14.days)})
+          WHERE (p.status IN ('running', 'canceling') OR p.created_at > #{quote(@now - 14.days)})
             #{type_scope("p")}
         SQL
       end

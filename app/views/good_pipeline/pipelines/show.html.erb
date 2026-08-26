@@ -4,7 +4,7 @@
   timings = @step_timings || {}
   lanes = Array(@stage_lanes)
   short = respond_to?(:short_type) ? short_type(@pipeline.type) : humanized_type(@pipeline.type).sub(/\s*Pipeline\z/, "")
-  status_data = { "pending" => ["○", "pending"], "running" => ["●", "running"], "succeeded" => ["✓", "succeeded"], "failed" => ["✗", "failed"], "halted" => ["⊘", "halted"], "skipped" => ["⊘", "skipped"] }
+  status_data = { "pending" => ["○", "pending"], "running" => ["●", "running"], "canceling" => ["◐", "canceling"], "canceled" => ["⊘", "canceled"], "succeeded" => ["✓", "succeeded"], "failed" => ["✗", "failed"], "halted" => ["⊘", "halted"], "skipped" => ["⊘", "skipped"] }
   glyph, label = status_data.fetch(@pipeline.status.to_s, ["○", @pipeline.status.to_s])
   now = @now || Time.current
   elapsed = ((@pipeline.terminal? ? @pipeline.updated_at : now) - @pipeline.created_at).to_f
@@ -21,10 +21,7 @@
     <span class="gp-status gp-status--<%= @pipeline.status %>"><%= glyph %> <%= label %></span>
     <span class="gp-strategy gp-strategy--<%= @pipeline.on_failure_strategy %>">on_failure: <%= @pipeline.on_failure_strategy %></span>
     <span class="gp-detail-uuid"><%= @pipeline.id %><button class="gp-copy" type="button" title="Copy id" data-gp-copy="<%= @pipeline.id %>" data-gp-copy-label="execution id"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="5" y="5" width="9" height="9" rx="1.5"></rect><path d="M11 5V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h2"></path></svg></button></span>
-    <span class="gp-actions">
-      <button class="gp-action" type="button" disabled title="not yet implemented"><%= %w[failed halted].include?(@pipeline.status.to_s) ? "retry failed step" : "re-run pipeline" %></button>
-      <% if @pipeline.status.to_s == "running" %><button class="gp-action gp-action--danger" type="button" disabled title="not yet implemented">cancel pipeline</button><% end %>
-    </span>
+    <%= render "actions", pipeline: @pipeline, detail_link: false %>
   </header>
 
   <div class="gp-detail-scroll">

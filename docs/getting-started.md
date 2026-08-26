@@ -52,10 +52,18 @@ Defaults are `"good_pipeline_coordination"` and `"good_pipeline_callbacks"`. Per
 
 ```ruby
 # config/routes.rb
+# Protect this mount with your application's administrator authentication.
 mount GoodPipeline::Engine => "/good_pipeline"
 ```
 
-See the [Web Dashboard](/dashboard) page for details.
+The dashboard is read-only by default. After protecting the mount, enable pipeline mutation controls explicitly:
+
+```ruby
+# config/initializers/good_pipeline.rb
+GoodPipeline.dashboard_mutations_enabled = true
+```
+
+This setting is not authentication. See the [Web Dashboard](/dashboard) page for secure mounting examples and details.
 
 ## Your first pipeline
 

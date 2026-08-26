@@ -28,6 +28,9 @@ class TestCleanup < ActiveSupport::TestCase
       pipeline: @running_pipeline, key: "step_a", job_class: "DownloadJob", coordination_status: "enqueued"
     )
 
+    @canceling_pipeline = create_old_pipeline(status: "canceling", step_status: "enqueued")
+    @canceled_pipeline = create_old_pipeline(status: "canceled", step_status: "canceled")
+
     # Recent terminal pipeline (should NOT be cleaned up)
     @recent_pipeline = GoodPipeline::PipelineRecord.create!(
       type: "TestPipeline", status: "failed", on_failure_strategy: "halt"
@@ -56,6 +59,18 @@ class TestCleanup < ActiveSupport::TestCase
     assert_not_nil GoodPipeline::PipelineRecord.find_by(id: @running_pipeline.id)
   end
 
+  test "preserves canceling pipelines" do
+    GoodPipeline.cleanup_preserved_pipelines(older_than: @now - 14.days)
+
+    assert_not_nil GoodPipeline::PipelineRecord.find_by(id: @canceling_pipeline.id)
+  end
+
+  test "cleans canceled pipelines" do
+    GoodPipeline.cleanup_preserved_pipelines(older_than: @now - 14.days)
+
+    assert_nil GoodPipeline::PipelineRecord.find_by(id: @canceled_pipeline.id)
+  end
+
   test "preserves recent terminal pipelines" do
     GoodPipeline.cleanup_preserved_pipelines(older_than: @now - 14.days)
 
@@ -80,14 +95,29 @@ class TestCleanup < ActiveSupport::TestCase
   test "noop when nothing to clean" do
     GoodPipeline.cleanup_preserved_pipelines(older_than: @now - 365.days)
 
-    assert_equal 3, GoodPipeline::PipelineRecord.count
+    assert_equal 5, GoodPipeline::PipelineRecord.count
   end
 
   test "triggers cleanup when GoodJob cleans preserved jobs" do
     GoodJob.cleanup_preserved_jobs(older_than: 14.days)
 
     assert_nil GoodPipeline::PipelineRecord.find_by(id: @old_pipeline.id)
+    assert_nil GoodPipeline::PipelineRecord.find_by(id: @canceled_pipeline.id)
     assert_not_nil GoodPipeline::PipelineRecord.find_by(id: @running_pipeline.id)
+    assert_not_nil GoodPipeline::PipelineRecord.find_by(id: @canceling_pipeline.id)
     assert_not_nil GoodPipeline::PipelineRecord.find_by(id: @recent_pipeline.id)
+  end
+
+  private
+
+  def create_old_pipeline(status:, step_status:)
+    pipeline = GoodPipeline::PipelineRecord.create!(
+      type: "TestPipeline", status: status, on_failure_strategy: "halt"
+    )
+    pipeline.update_columns(updated_at: @now - 30.days)
+    GoodPipeline::StepRecord.create!(
+      pipeline: pipeline, key: "step_a", job_class: "DownloadJob", coordination_status: step_status
+    )
+    pipeline
   end
 end

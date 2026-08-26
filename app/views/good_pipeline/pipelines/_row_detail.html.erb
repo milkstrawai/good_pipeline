@@ -12,7 +12,8 @@
     "pending" => ["○", "pending", "pending"], "running" => ["●", "running", "running"],
     "enqueued" => ["●", "enqueued", "running"], "succeeded" => ["✓", "succeeded", "succeeded"],
     "failed" => ["✗", "failed", "failed"], "halted" => ["⊘", "halted", "halted"],
-    "skipped" => ["⊘", "skipped", "skipped"], "skipped_by_branch" => ["⊘", "skipped·br", "skipped"]
+    "canceled" => ["⊘", "canceled", "canceled"], "skipped" => ["⊘", "skipped", "skipped"],
+    "skipped_by_branch" => ["⊘", "skipped·br", "skipped"]
   }.freeze
   duration = lambda do |seconds|
     next "—" if seconds.nil?
@@ -32,7 +33,7 @@
       [get.call(timing, :performed_at) || get.call(timing, :started_at), get.call(timing, :finished_at)]
     end
   end
-  priority = { "failed" => 0, "halted" => 1, "enqueued" => 2, "running" => 2, "pending" => 3 }.freeze
+  priority = { "failed" => 0, "halted" => 1, "enqueued" => 2, "running" => 2, "pending" => 3, "canceled" => 4 }.freeze
   table_steps = steps.length > 12 ? steps.sort_by { |step| [priority.fetch(step.coordination_status.to_s, 9), step.created_at, step.id.to_s] } : steps
   done = steps.count { |step| step.coordination_status.to_s == "succeeded" }
   total_duration = ((pipeline.terminal? ? pipeline.updated_at : (@now || Time.current)) - pipeline.created_at).to_f
@@ -69,11 +70,7 @@
         <tr><td class="gp-kv-key">created_at</td><td class="gp-kv-value"><%= pipeline.created_at.utc.strftime("%Y-%m-%d %H:%M:%SZ") %></td></tr>
         <tr><td class="gp-kv-key">status</td><td class="gp-kv-value"><%= pipeline.status %></td></tr>
       </tbody></table>
-      <div class="gp-actions">
-        <button class="gp-action" type="button" disabled title="not yet implemented"><%= %w[failed halted].include?(pipeline.status.to_s) ? "retry failed step" : "re-run pipeline" %></button>
-        <% if pipeline.status.to_s == "running" %><button class="gp-action gp-action--danger" type="button" disabled title="not yet implemented">cancel pipeline</button><% end %>
-        <%= link_to "detail page + dag ↗", pipeline_path(pipeline), class: "gp-action gp-action--ghost" %>
-      </div>
+      <%= render "actions", pipeline: pipeline, detail_link: true %>
     </section>
 
     <section class="gp-detail-section gp-detail-wide">

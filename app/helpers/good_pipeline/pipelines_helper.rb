@@ -6,6 +6,8 @@ module GoodPipeline
       "pending" => { label: "pending", glyph: "\u25CB", var: "--st-pending", variable: "--st-pending" },
       "running" => { label: "running", glyph: "\u25CF", var: "--st-running", variable: "--st-running" },
       "enqueued" => { label: "enqueued", glyph: "\u25CF", var: "--st-running", variable: "--st-running" },
+      "canceling" => { label: "canceling", glyph: "\u25D0", var: "--st-canceling", variable: "--st-canceling" },
+      "canceled" => { label: "canceled", glyph: "\u2298", var: "--st-canceled", variable: "--st-canceled" },
       "succeeded" => { label: "succeeded", glyph: "\u2713", var: "--st-succeeded", variable: "--st-succeeded" },
       "failed" => { label: "failed", glyph: "\u2717", var: "--st-failed", variable: "--st-failed" },
       "halted" => { label: "halted", glyph: "\u2298", var: "--st-halted", variable: "--st-halted" },
@@ -16,13 +18,15 @@ module GoodPipeline
     }.transform_values(&:freeze).freeze
 
     STATUS_STACK_ORDER = %w[
-      succeeded failed halted enqueued running pending skipped skipped_by_branch
+      succeeded failed halted enqueued running pending canceled skipped skipped_by_branch
     ].freeze
 
     STATUS_BADGES = {
       "pending" => "\u25CB Pending",
       "running" => "\u25CF Running",
       "enqueued" => "\u25CF Enqueued",
+      "canceling" => "\u25D0 Canceling",
+      "canceled" => "\u2298 Canceled",
       "succeeded" => "\u2713 Succeeded",
       "failed" => "\u2717 Failed",
       "halted" => "\u2298 Halted",

@@ -4,7 +4,8 @@
   status_meta = {
     "pending" => ["○", "pending"], "running" => ["●", "running"], "enqueued" => ["●", "enqueued"],
     "succeeded" => ["✓", "succeeded"], "failed" => ["✗", "failed"], "halted" => ["⊘", "halted"],
-    "skipped" => ["⊘", "skipped"], "skipped_by_branch" => ["⊘", "skipped·br"]
+    "canceled" => ["⊘", "canceled"], "skipped" => ["⊘", "skipped"],
+    "skipped_by_branch" => ["⊘", "skipped·br"]
   }.freeze
   duration = lambda do |seconds|
     next "—" if seconds.nil?
@@ -14,7 +15,7 @@
     else "#{value / 3_600}h #{(value % 3_600) / 60}m"
     end
   end
-  priority = { "failed" => 0, "halted" => 1, "enqueued" => 2, "running" => 2, "pending" => 3 }.freeze
+  priority = { "failed" => 0, "halted" => 1, "enqueued" => 2, "running" => 2, "pending" => 3, "canceled" => 4 }.freeze
   ordered_steps = steps.length > 12 ? steps.sort_by { |step| [priority.fetch(step.coordination_status.to_s, 9), step.created_at, step.id.to_s] } : steps
 %>
 <h3 class="gp-section-heading">steps <span class="gp-heading-meta"><%= steps.length %> total</span></h3>

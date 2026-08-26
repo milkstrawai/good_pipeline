@@ -56,6 +56,13 @@ class TestPipelineRecord < ActiveSupport::TestCase
     refute_predicate pipeline, :terminal?
   end
 
+  def test_terminal_returns_false_for_canceling
+    pipeline = create_pipeline
+    pipeline.update_columns(status: "canceling")
+
+    refute_predicate pipeline, :terminal?
+  end
+
   def test_terminal_returns_true_for_succeeded
     pipeline = create_pipeline
     pipeline.update_columns(status: "succeeded")
@@ -84,6 +91,13 @@ class TestPipelineRecord < ActiveSupport::TestCase
     assert_predicate pipeline, :terminal?
   end
 
+  def test_terminal_returns_true_for_canceled
+    pipeline = create_pipeline
+    pipeline.update_columns(status: "canceled")
+
+    assert_predicate pipeline, :terminal?
+  end
+
   # --- transition_to! valid transitions ---
 
   def test_transition_pending_to_running
@@ -98,6 +112,22 @@ class TestPipelineRecord < ActiveSupport::TestCase
     pipeline.transition_to!(:skipped)
 
     assert_equal "skipped", pipeline.status
+  end
+
+  def test_transition_pending_to_canceled
+    pipeline = create_pipeline
+    pipeline.transition_to!(:canceled)
+
+    assert_equal "canceled", pipeline.status
+  end
+
+  def test_transition_running_through_canceling_to_canceled
+    pipeline = create_pipeline
+    pipeline.transition_to!(:running)
+    pipeline.transition_to!(:canceling)
+    pipeline.transition_to!(:canceled)
+
+    assert_equal "canceled", pipeline.status
   end
 
   def test_transition_running_to_succeeded

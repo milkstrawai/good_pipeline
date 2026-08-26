@@ -6,10 +6,20 @@ GoodPipeline ships a mountable Rails engine for inspecting executions and pipeli
 
 ```ruby
 # config/routes.rb
+# Protect this mount with your application's administrator authentication.
 mount GoodPipeline::Engine => "/good_pipeline"
 ```
 
-The dashboard is then available at `/good_pipeline`. Links, partial navigation, and the theme endpoint all honor a non-root mount path.
+The dashboard is then available at `/good_pipeline`. Links, partial navigation, and the theme endpoint all honor a non-root mount path. The engine does not provide authentication, so treat the mount as admin-only; see [Securing the dashboard](#securing-the-dashboard).
+
+Pipeline mutation controls are read-only by default. After protecting the mount, enable them explicitly:
+
+```ruby
+# config/initializers/good_pipeline.rb
+GoodPipeline.dashboard_mutations_enabled = true
+```
+
+Only literal `true` enables mutations. The setting hides the controls and makes direct mutation requests return `403 Forbidden`; it does not authenticate or authorize visitors. Theme changes remain available in read-only mode.
 
 ## Theme
 
@@ -29,13 +39,19 @@ The index page combines:
 
 ### KPI scope
 
-The filtered-row KPI matches the pager and therefore respects type, status, time, and search filters. The remaining KPIs are operational summaries scoped only by pipeline type: running now has no time cutoff, while throughput, failures, duration percentiles, and the sparkline use their displayed fixed windows. KPI results are cached together for 30 seconds.
+The filtered-row KPI matches the pager and therefore respects type, status, time, and search filters. The remaining KPIs are operational summaries scoped only by pipeline type: running now has no time cutoff, while throughput, failures, duration percentiles, and the sparkline use their displayed fixed windows. `canceling` counts as running now; terminal `canceled` executions contribute to duration percentiles but not the failure KPI. KPI results are cached together for 30 seconds.
 
 ## Pipeline details
 
 The detail page shows identity, parameters, failure strategy, chain links, requery snippets, a step table, an interactive DAG, and a stage timeline. Step keys continue to link to GoodJob when the corresponding job record exists, and failure class/message text remains visible for triage.
 
 ![Pipeline Details](/screenshots/show.png)
+
+### Canceling an execution
+
+When dashboard mutations are enabled, the **Cancel pipeline** action performs a graceful scheduling stop. For a pending pipeline, cancellation immediately sets the pipeline and its pending steps to `canceled`. For a running pipeline, it sets the pipeline to `canceling`, marks pending steps `canceled`, and prevents any future downstream steps from being enqueued.
+
+Jobs already handed to GoodJob — including enqueued, scheduled, and retrying jobs — run normally. GoodPipeline does not change their GoodJob records or force-terminate workers, and each step retains its actual `succeeded`, `failed`, or `halted` outcome. The pipeline becomes terminal `canceled` only after every enqueued job finishes. Until then, `canceling` is active and nonterminal; it can remain that way indefinitely if a job never reaches a terminal outcome.
 
 ## Pipeline definitions
 
@@ -56,7 +72,7 @@ Mermaid runs in strict security mode. Graph labels are transported as escaped da
 
 The dashboard discovers GoodJob's mounted engine path and links to individual jobs. Step durations are loaded in one batch from `good_jobs`; no timing columns are duplicated in GoodPipeline.
 
-GoodPipeline cleanup follows GoodJob's configured preservation window and only deletes terminal pipelines. Pending and running pipelines are retained. If one of those pipelines outlives the GoodJob window, its early job rows may already be gone; affected steps correctly show `—` and no timeline bar.
+GoodPipeline cleanup follows GoodJob's configured preservation window and only deletes terminal pipelines, including `canceled`. Pending, running, and `canceling` pipelines are retained. If one of those pipelines outlives the GoodJob window, its early job rows may already be gone; affected steps correctly show `—` and no timeline bar.
 
 ## Upgrading to 0.5
 
@@ -86,7 +102,7 @@ After dropping any invalid indexes, run the migration again.
 
 ## Securing the dashboard
 
-GoodPipeline's engine is a standard Rails engine mount. Secure it the same way you would any admin interface:
+GoodPipeline's engine is a standard Rails engine mount and does not authenticate users. Even read-only execution data can be sensitive, and enabling mutations allows visitors to cancel pipelines. Mount it only behind your application's administrator authentication or routing constraint:
 
 ```ruby
 # config/routes.rb

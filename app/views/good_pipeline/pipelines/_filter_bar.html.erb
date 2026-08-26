@@ -16,21 +16,23 @@
   </form>
 
   <div id="gp-filters">
-    <div class="gp-segment" role="group" aria-label="Status filter">
-      <span class="gp-segment-label">status</span>
-      <% %w[all running succeeded failed halted skipped].each do |value| %>
-        <%
-          href_params = base.merge("status" => value).except("page", "expanded")
-          count = value == "all" ? status_counts.values.sum : status_counts.fetch(value, 0)
-        %>
-        <%= link_to pipelines_path(href_params),
-                    class: "gp-segment-link #{'is-active' if status == value}",
-                    aria: ({ current: "page" } if status == value),
-                    data: { gp_partial_link: true, gp_segment: "status", gp_segment_value: value,
-                            gp_status_count: count } do %>
-          <span><%= value %></span><span class="gp-segment-count"><%= format_number(count) %></span>
+    <div class="gp-status-filter-scroll">
+      <div class="gp-segment" role="group" aria-label="Status filter">
+        <span class="gp-segment-label">status</span>
+        <% %w[all running canceling succeeded failed halted canceled skipped].each do |value| %>
+          <%
+            href_params = base.merge("status" => value).except("page", "expanded")
+            count = value == "all" ? status_counts.values.sum : status_counts.fetch(value, 0)
+          %>
+          <%= link_to pipelines_path(href_params),
+                      class: "gp-segment-link #{'is-active' if status == value}",
+                      aria: ({ current: "page" } if status == value),
+                      data: { gp_partial_link: true, gp_segment: "status", gp_segment_value: value,
+                              gp_status_count: count } do %>
+            <span><%= value %></span><span class="gp-segment-count"><%= format_number(count) %></span>
+          <% end %>
         <% end %>
-      <% end %>
+      </div>
     </div>
 
     <div class="gp-segment" role="group" aria-label="Time filter">

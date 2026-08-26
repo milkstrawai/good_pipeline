@@ -35,9 +35,9 @@ Internal architecture for contributors and anyone who wants to understand how th
 ┌─────────────────────────▼───────────────────────────────────┐
 │                  Coordination Layer                          │
 │    Coordinator owns ALL coordination_status transitions     │
-│    Atomic row-locked transitions (FOR UPDATE SKIP LOCKED)   │
-│    Explicit transaction boundaries per atomic unit          │
-│    recompute_pipeline_status is the sole derivation path    │
+│    Pipeline-first FOR UPDATE locks serialize coordination    │
+│    One transaction per coordination call; fresh state reads │
+│    Running/canceling outcomes share one derivation path     │
 └─────────────────────────┬───────────────────────────────────┘
                           │
 ┌─────────────────────────▼───────────────────────────────────┐
@@ -58,11 +58,11 @@ GoodPipeline uses four Postgres tables:
 | `id` | uuid | Primary key |
 | `type` | string | Pipeline class name (e.g. `"VideoProcessingPipeline"`) |
 | `params` | jsonb | Arguments passed to `.run()` |
-| `status` | string | `pending`, `running`, `succeeded`, `failed`, `halted`, `skipped` |
+| `status` | string | `pending`, `running`, `canceling`, `succeeded`, `failed`, `halted`, `skipped`, `canceled` |
 | `halt_triggered` | boolean | Set to `true` when `:halt` strategy is applied |
 | `good_job_batch_id` | uuid | Pipeline-level GoodJob::Batch for grouping |
 | `on_failure_strategy` | string | `halt`, `continue`, or `ignore` |
-| `callbacks_dispatched_at` | timestamp | Exactly-once callback dispatch guard |
+| `callbacks_dispatched_at` | timestamp | Enqueue-once callback job guard |
 | `created_at` | timestamp | |
 | `updated_at` | timestamp | |
 
@@ -75,7 +75,7 @@ GoodPipeline uses four Postgres tables:
 | `key` | string | Step key — graph identity |
 | `job_class` | string | ActiveJob class name |
 | `params` | jsonb | Arguments passed to `with:` |
-| `coordination_status` | string | `pending`, `enqueued`, `succeeded`, `failed`, `skipped` |
+| `coordination_status` | string | `pending`, `enqueued`, `succeeded`, `failed`, `skipped`, `skipped_by_branch`, `halted`, `canceled` |
 | `on_failure_strategy` | string | Step-level override (nullable) |
 | `enqueue_options` | jsonb | Options passed to `job.enqueue()` (queue, priority, wait, etc.) |
 | `good_job_batch_id` | uuid | Step's own GoodJob::Batch |
@@ -113,28 +113,34 @@ When the batch's `on_finish` fires, `StepFinishedJob` receives the signal and de
 
 ## The coordinator
 
-The `Coordinator` class is the sole owner of all `coordination_status` transitions. Its `complete_step` method uses explicit transaction boundaries around three atomic units:
+The `Coordinator` class is the sole owner of all `coordination_status` transitions. Its cancellation, completion, enqueue, and recompute entry points use one coordination transaction with a consistent pipeline-first lock order:
 
-1. **Terminal step transition** — marks the step `succeeded` or `failed` with metadata
-2. **Halt propagation** — sets `halt_triggered` and skips all pending steps (if `:halt` strategy)
-3. **Downstream unblocking** — checks and enqueues each downstream step independently via `try_enqueue_step`, which acquires a per-step row lock
+1. **Pipeline lock** — acquires a blocking `FOR UPDATE` lock on the owning pipeline
+2. **Step locks** — acquires blocking `FOR UPDATE` locks on step rows only after the pipeline lock
+3. **Coordination** — records the outcome, applies failure policy, resolves downstream enqueue, then derives pipeline status from fresh step rows before commit
 
-These three units are intentionally not wrapped in a single outer transaction. Holding locks across multiple downstream step enqueues would be a bottleneck under high parallelism.
+Cancellation, single-step enqueue, bulk enqueue, and completion all follow this order. This serializes the cancellation barrier against new enqueue attempts: whichever transaction obtains the pipeline lock first completes its state change before the other rechecks the current pipeline status. User jobs execute outside these coordination transactions; only their GoodJob insertion is transactionally coupled to the step transition.
 
-After the three units complete, `complete_step` calls `recompute_pipeline_status` to derive the pipeline's terminal state from the current database state.
+### Graceful cancellation
 
-## Terminal state derivation
+`Coordinator.cancel_pipeline` locks the pipeline before changing its state. A `pending` pipeline and its pending steps become `canceled` immediately. A `running` pipeline becomes `canceling`, and all of its still-pending steps become `canceled`, creating a scheduling barrier that prevents future downstream enqueue.
 
-Pipeline terminal status is **never inferred from a single event**. It is always derived by `recompute_pipeline_status`, which reads all step `coordination_status` values and the `halt_triggered` flag:
+Cancellation deliberately does not alter GoodJob records or force-terminate workers. Jobs that are already enqueued, scheduled, or retrying run normally. Their steps retain the actual terminal outcome (`succeeded`, `failed`, or `halted`), while completion coordination suppresses normal failure propagation and downstream enqueue. When no enqueued steps remain, the pipeline becomes `canceled`; without polling or force termination, it may remain nonterminal `canceling` indefinitely if an enqueued job never finishes.
+
+## Running and canceling outcome derivation
+
+For a `running` or `canceling` pipeline, the terminal outcome is not inferred from one step event. `recompute_pipeline_status` reads fresh step `coordination_status` values and the `halt_triggered` flag while the pipeline is locked:
 
 | Condition | Derived status |
 |---|---|
-| Any step is `pending` or `enqueued` | Not terminal — still running |
+| A `running` pipeline has any step `pending` or `enqueued` | Not terminal — still running |
 | All steps terminal, none `failed` | `succeeded` |
 | All steps terminal, at least one `failed`, `halt_triggered` is `true` | `halted` |
 | All steps terminal, at least one `failed`, `halt_triggered` is `false` | `failed` |
+| Pipeline is `canceling` and any step is still `enqueued` | Remain `canceling` — active and nonterminal |
+| Pipeline is `canceling` and no step is `pending` or `enqueued` | `canceled` |
 
-This function is safe to call from multiple code paths (coordinator, batch reconciliation) because it is idempotent on terminal pipelines.
+Cancellation takes precedence over failure-derived status: after a pipeline enters `canceling`, drained step outcomes remain available for inspection but the pipeline finishes as `canceled`. Recomputing is idempotent on terminal pipelines. A pending pipeline can instead transition directly to `canceled`, and chain propagation can transition a pending downstream pipeline directly to `skipped`; neither case needs step-outcome derivation.
 
 ## Enqueue transaction contract
 
@@ -144,17 +150,19 @@ If the transaction rolls back, both the step status revert and the GoodJob recor
 
 ## Concurrency safety
 
-### The double-enqueue problem
+### Enqueue and cancellation races
 
-If two upstream steps of a shared downstream complete simultaneously, both coordinator invocations may try to enqueue the downstream step. GoodPipeline prevents this with:
+If concurrent completions target a shared downstream step, or cancellation races an enqueue attempt, GoodPipeline prevents an invalid interleaving with:
 
-1. **`FOR UPDATE SKIP LOCKED`** — one coordinator acquires the row lock; the other skips silently
-2. **`good_job_id` null guard** — a non-null `good_job_id` is conclusive proof the step was already enqueued (only valid inside a row lock)
-3. **Status guard** — the coordinator checks `coordination_status == "pending"` inside the lock
+1. **Pipeline-first serialization** — cancellation, completion, and enqueue paths take the owning pipeline's blocking `FOR UPDATE` lock first
+2. **Blocking step locks** — downstream step rows are locked with `FOR UPDATE` in a consistent order after the pipeline lock
+3. **Fresh guards** — pipeline status, step status, active-step existence, and `good_job_id` are rechecked while locked before enqueue or terminalization
 
-### Callback exactly-once
+### Callback dispatch guard
 
-`dispatch_callbacks_once` uses a `FOR UPDATE` locked transaction with the `callbacks_dispatched_at` timestamp as a guard. Even if `recompute_pipeline_status` is called concurrently from multiple code paths, the callback bundle fires exactly once.
+`dispatch_callbacks_once` conditionally updates only a pipeline whose `callbacks_dispatched_at` is still `NULL`. The winning update sets the timestamp and enqueues one callback job inside the terminal-state transaction; later attempts update zero rows. Callback job execution is not exactly once, so user callbacks must tolerate interruption, redelivery, or manual retry.
+
+Chain propagation is registered with `ActiveRecord.after_all_transactions_commit`, so it never acquires downstream pipeline locks while an upstream or caller-managed transaction is still open. The propagation operation is idempotent, but its post-commit delivery is not a durable outbox; crash-safe chain delivery is a separate reliability concern.
 
 ## Retry model
 
@@ -177,7 +185,7 @@ This ensures a step is never prematurely marked `failed` on attempt 1 of 5.
 4. `coordination_status` is the sole decision input -- the coordinator reads only this column
 5. `:halted` is policy-driven -- set via `halt_triggered` flag, not pattern-derived
 6. The coordinator owns all transitions; `StepFinishedJob` is a thin dispatcher
-7. Separate atomic units per transaction boundary to minimize lock contention
+7. Pipeline-first lock ordering serializes completion, enqueue, and cancellation within one coordination transaction
 8. DAG validation runs at instantiation, before any database writes
 9. `failure_strategy` and `on_failure` are distinct concepts -- strategy vs. callback, no naming collision
 

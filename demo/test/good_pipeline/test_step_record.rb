@@ -62,6 +62,14 @@ class TestStepRecord < ActiveSupport::TestCase
     assert_predicate step, :terminal_coordination_status?
   end
 
+  def test_terminal_returns_true_for_canceled
+    pipeline = create_pipeline
+    step = create_step(pipeline)
+    step.update_columns(coordination_status: "canceled")
+
+    assert_predicate step, :terminal_coordination_status?
+  end
+
   # --- transition_coordination_status_to! valid transitions ---
 
   def test_transition_pending_to_enqueued
@@ -78,6 +86,14 @@ class TestStepRecord < ActiveSupport::TestCase
     step.transition_coordination_status_to!(:skipped)
 
     assert_equal "skipped", step.coordination_status
+  end
+
+  def test_transition_pending_to_canceled
+    pipeline = create_pipeline
+    step = create_step(pipeline)
+    step.transition_coordination_status_to!(:canceled)
+
+    assert_equal "canceled", step.coordination_status
   end
 
   def test_transition_enqueued_to_succeeded
@@ -131,6 +147,15 @@ class TestStepRecord < ActiveSupport::TestCase
     step.transition_coordination_status_to!(:enqueued)
     assert_raises(GoodPipeline::InvalidTransition) do
       step.transition_coordination_status_to!(:skipped)
+    end
+  end
+
+  def test_transition_enqueued_to_canceled_raises
+    pipeline = create_pipeline
+    step = create_step(pipeline)
+    step.transition_coordination_status_to!(:enqueued)
+    assert_raises(GoodPipeline::InvalidTransition) do
+      step.transition_coordination_status_to!(:canceled)
     end
   end
 

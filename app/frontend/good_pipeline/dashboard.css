@@ -5,7 +5,7 @@
   --fg:#e6e9ef;--fg-1:#c2c8d2;--fg-2:#8a92a0;--fg-3:#5d6573;--fg-4:#3f4651;
   --accent:#d6deea;--selected:#1d2530;--selected-bar:#2c3a52;--conn:#4ea36b;
   --st-succeeded:#4ea36b;--st-running:#6694e8;--st-failed:#d96565;
-  --st-halted:#c98a3f;--st-skipped:#6b7384;--st-pending:#6b7384;
+  --st-halted:#c98a3f;--st-canceling:#d79a4a;--st-canceled:#929baa;--st-skipped:#6b7384;--st-pending:#6b7384;
   --strat-halt:#d96565;--strat-continue:#6694e8;--strat-ignore:#6b7384;
 }
 
@@ -16,7 +16,7 @@
   --fg:#0f1216;--fg-1:#2a2f38;--fg-2:#5b6471;--fg-3:#8a92a0;--fg-4:#b6bcc7;
   --accent:#1a1d22;--selected:#e7eef9;--selected-bar:#c5d4ee;--conn:#2f8a52;
   --st-succeeded:#2f8a52;--st-running:#2563d4;--st-failed:#c43a3a;
-  --st-halted:#b16a1f;--st-skipped:#6b7384;--st-pending:#6b7384;
+  --st-halted:#b16a1f;--st-canceling:#874b0f;--st-canceled:#4f5867;--st-skipped:#6b7384;--st-pending:#6b7384;
   --strat-halt:#c43a3a;--strat-continue:#2563d4;--strat-ignore:#6b7384;
 }
 
@@ -49,13 +49,22 @@ html[data-gp-theme] body {
   margin:-1px!important; overflow:hidden!important; clip:rect(0,0,0,0)!important;
   white-space:nowrap!important; border:0!important;
 }
+.gp-flash {
+  position:fixed; z-index:1000; top:10px; right:12px; max-width:min(420px,calc(100vw - 24px));
+  box-sizing:border-box;
+  padding:8px 12px; border:1px solid var(--border-strong); border-radius:4px;
+  color:var(--fg); background:var(--bg-2); box-shadow:0 6px 24px color-mix(in oklab,var(--bg) 75%,transparent);
+  font:11px/1.4 "JetBrains Mono",monospace;
+}
+.gp-flash--notice { border-color:color-mix(in oklab,var(--st-succeeded) 45%,var(--border)); }
+.gp-flash--alert { border-color:color-mix(in oklab,var(--st-failed) 50%,var(--border)); color:var(--st-failed); }
 
 /* Shell */
 .gp-app--dashboard, .gp-app--definitions { display:grid; grid-template-columns:264px minmax(0,1fr); overflow:hidden; }
 .gp-app--detail { display:flex; flex-direction:column; overflow:hidden; }
 .gp-main { display:flex; flex-direction:column; min-width:0; min-height:0; overflow:hidden; }
 #gp-dashboard, #gp-kpi, #gp-table { display:contents; }
-#gp-filters { display:flex; align-items:center; gap:10px; min-width:0; }
+#gp-filters { display:flex; align-items:center; gap:10px; min-width:0; flex-wrap:wrap; }
 #gp-kpi.is-loading .gp-kpi-strip, #gp-filters.is-loading, #gp-table.is-loading .gp-table-wrap,
 #gp-table.is-loading .gp-pager { opacity:.6; pointer-events:none; }
 .gp-kpi-strip, #gp-filters, .gp-table-wrap, .gp-pager { transition:opacity 120ms ease-in; }
@@ -161,6 +170,8 @@ html[data-gp-theme] body {
 }
 .gp-status--pending,.gp-status-pending,.badge-pending { --gp-status:var(--st-pending); }
 .gp-status--running,.gp-status--enqueued,.gp-status-running,.gp-status-enqueued,.badge-running,.badge-enqueued { --gp-status:var(--st-running); }
+.gp-status--canceling,.gp-status-canceling,.badge-canceling { --gp-status:var(--st-canceling); }
+.gp-status--canceled,.gp-status-canceled,.badge-canceled { --gp-status:var(--st-canceled); }
 .gp-status--succeeded,.gp-status-succeeded,.badge-succeeded { --gp-status:var(--st-succeeded); }
 .gp-status--failed,.gp-status-failed,.badge-failed { --gp-status:var(--st-failed); }
 .gp-status--halted,.gp-status-halted,.badge-halted { --gp-status:var(--st-halted); }
@@ -193,6 +204,7 @@ html[data-gp-theme] body {
 }
 .gp-search svg { width:12px; height:12px; flex:none; }
 .gp-search input { flex:1; min-width:0; padding:0; border:0; outline:0; color:var(--fg); background:transparent; font-size:11.5px; }
+.gp-status-filter-scroll { flex:0 1 auto; min-width:0; max-width:100%; overflow-x:auto; overflow-y:hidden; }
 /* Segment children use inline layout, not flex centring: a flex row would centre
    the 11.5px label box against the 9.5px count box and their baselines would
    diverge. `--gp-segment-line` is the segment's inner height (26px - 2px border),
@@ -278,6 +290,7 @@ html[data-gp-theme] body {
 .gp-kv-key { width:140px; color:var(--fg-3); font-family:"JetBrains Mono",monospace; white-space:nowrap; }
 .gp-kv-value { color:var(--fg); font-family:"JetBrains Mono",monospace; overflow-wrap:anywhere; }
 .gp-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+.gp-action-form { display:inline-flex; margin:0; }
 .gp-action {
   display:inline-flex; align-items:center; height:22px; padding:0 10px; border:1px solid var(--border-strong);
   border-radius:3px; color:var(--fg-1); background:var(--bg-2); font:11px "JetBrains Mono",monospace;

@@ -23,7 +23,7 @@ module GoodPipeline
   DEFAULT_CALLBACK_QUEUE_NAME = "good_pipeline_callbacks"
 
   class << self
-    attr_writer :coordination_queue_name, :callback_queue_name
+    attr_writer :coordination_queue_name, :callback_queue_name, :dashboard_mutations_enabled
 
     def coordination_queue_name
       @coordination_queue_name || DEFAULT_COORDINATION_QUEUE_NAME
@@ -31,6 +31,10 @@ module GoodPipeline
 
     def callback_queue_name
       @callback_queue_name || DEFAULT_CALLBACK_QUEUE_NAME
+    end
+
+    def dashboard_mutations_enabled?
+      @dashboard_mutations_enabled == true
     end
   end
 
