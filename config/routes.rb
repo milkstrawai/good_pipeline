@@ -6,6 +6,7 @@ GoodPipeline::Engine.routes.draw do
   resources :pipelines, only: %i[index show] do
     get :definitions, on: :collection
     post :cancel, on: :member
+    post :rerun, on: :member
   end
 
   patch :theme, to: "themes#update", as: :theme

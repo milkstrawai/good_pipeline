@@ -4,7 +4,7 @@ module GoodPipeline
   class PipelinesController < ApplicationController # rubocop:disable Metrics/ClassLength
     PAGE_SIZE = 25
 
-    before_action :require_dashboard_mutations_enabled!, only: :cancel
+    before_action :require_dashboard_mutations_enabled!, only: %i[cancel rerun]
 
     SidebarEntry = Data.define(
       :type,
@@ -100,7 +100,39 @@ module GoodPipeline
                     status: :see_other
     end
 
+    def rerun # rubocop:disable Metrics/MethodLength
+      source = PipelineRecord.find(params[:id])
+
+      unless source.terminal?
+        return redirect_back fallback_location: pipeline_path(source), allow_other_host: false,
+                             alert: "Only finished pipelines can be re-run.", status: :see_other
+      end
+
+      pipeline = build_rerun_pipeline(source)
+      unless pipeline
+        return redirect_back fallback_location: pipeline_path(source), allow_other_host: false,
+                             alert: "Pipeline could not be re-run with its stored parameters and current definition.",
+                             status: :see_other
+      end
+
+      rerun = Runner.call(pipeline)
+      redirect_to pipeline_path(rerun), notice: "Pipeline re-run started.", status: :see_other
+    end
+
     private
+
+    def build_rerun_pipeline(source)
+      pipeline_class = source.type.safe_constantize
+      unless pipeline_class.is_a?(Class) && pipeline_class < GoodPipeline::Pipeline
+        raise InvalidPipelineError, "#{source.type} is not an available GoodPipeline::Pipeline"
+      end
+      raise InvalidPipelineError, "stored pipeline parameters must be an object" unless source.params.is_a?(Hash)
+
+      pipeline_class.build(**source.params.symbolize_keys)
+    rescue ArgumentError, NameError, NotImplementedError, GoodPipeline::Error => error
+      Rails.error.report(error, handled: true, context: { good_pipeline_source_id: source.id })
+      nil
+    end
 
     def require_dashboard_mutations_enabled!
       head :forbidden unless GoodPipeline.dashboard_mutations_enabled?

@@ -124,7 +124,7 @@ module GoodPipeline
       assert_includes response.body, "gp-row-detail-inner"
       assert_includes response.body, "is-running"
       assert_includes response.body, %(colspan="7")
-      assert_match(/disabled(?:="disabled")? title="not yet implemented"/, response.body)
+      assert_match(/disabled(?:="disabled")? title="available after the pipeline finishes"/, response.body)
     end
 
     test "canonical pipeline_type parameter scopes executions" do
@@ -223,7 +223,7 @@ module GoodPipeline
       assert_response :success
       assert_select ".gp-status--canceling", text: /canceling/, minimum: 1
       assert_select "button[disabled]", text: "cancel requested", count: 1
-      assert_select "form.gp-action-form", count: 0
+      assert_select %(form[action="/good_pipeline/pipelines/#{canceling.id}/cancel"]), count: 0
       assert_select ".gp-status--canceled", text: /canceled/, minimum: 1
       assert_includes response.body, ":::canceled"
 
@@ -231,7 +231,7 @@ module GoodPipeline
 
       assert_response :success
       assert_select ".gp-detail-header .gp-status--canceled", text: /canceled/, count: 1
-      assert_select "form.gp-action-form", count: 0
+      assert_select %(form[action="/good_pipeline/pipelines/#{canceled.id}/cancel"]), count: 0
       assert_select "button.gp-action--danger[disabled]", text: "cancel pipeline", count: 1
 
       get "/good_pipeline", params: { status: "canceled" }
