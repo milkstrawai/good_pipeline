@@ -53,6 +53,16 @@ When dashboard mutations are enabled, the **Cancel pipeline** action performs a 
 
 Jobs already handed to GoodJob — including enqueued, scheduled, and retrying jobs — run normally. GoodPipeline does not change their GoodJob records or force-terminate workers, and each step retains its actual `succeeded`, `failed`, or `halted` outcome. The pipeline becomes terminal `canceled` only after every enqueued job finishes. Until then, `canceling` is active and nonterminal; it can remain that way indefinitely if a job never reaches a terminal outcome.
 
+### Re-running an execution
+
+The **Re-run pipeline** action is available after an execution reaches `succeeded`, `failed`, `halted`, `skipped`, or `canceled`. It creates a new standalone execution and starts it from the beginning. The source execution is immutable history: its status, steps, GoodJob records, callback state, and chain records are not reused or changed.
+
+GoodPipeline resolves the stored pipeline type, passes its stored JSON parameters to the current pipeline class, and rebuilds the internal step DAG from the current `configure` implementation. The new execution can therefore differ from the historical one when application code has changed. Normal branching and failure behavior still applies, and its jobs, callbacks, and external side effects may execute again.
+
+Chain relationships are deliberately not copied. Re-running a pipeline that was part of a `.then` chain neither attaches its old upstream pipelines nor recreates or starts its old downstream pipelines. Each confirmed submission creates a separate execution.
+
+If the stored type no longer resolves to a pipeline, the parameters are incompatible with the current method signature, or the current definition fails validation, no new execution is created and the dashboard shows an alert. The action stays disabled for `pending`, `running`, and `canceling` executions to avoid duplicating active work.
+
 ## Pipeline definitions
 
 The definitions catalog shows each type's strategy, declared steps and dependencies, edge count, execution count, and structural graph.
@@ -102,7 +112,7 @@ After dropping any invalid indexes, run the migration again.
 
 ## Securing the dashboard
 
-GoodPipeline's engine is a standard Rails engine mount and does not authenticate users. Even read-only execution data can be sensitive, and enabling mutations allows visitors to cancel pipelines. Mount it only behind your application's administrator authentication or routing constraint:
+GoodPipeline's engine is a standard Rails engine mount and does not authenticate users. Even read-only execution data can be sensitive, and enabling mutations allows visitors to cancel or re-run pipelines. Mount it only behind your application's administrator authentication or routing constraint:
 
 ```ruby
 # config/routes.rb

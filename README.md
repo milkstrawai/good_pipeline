@@ -226,7 +226,7 @@ mount GoodPipeline::Engine => "/good_pipeline"
 
 The engine does not provide authentication. Treat the dashboard as an admin-only interface and see [Securing the dashboard](docs/dashboard.md#securing-the-dashboard) for mount examples.
 
-Pipeline mutation controls are read-only by default. After protecting the mount, enable cancellation explicitly:
+Pipeline mutation controls are read-only by default. After protecting the mount, enable cancellation and re-running explicitly:
 
 ```ruby
 # config/initializers/good_pipeline.rb
@@ -251,6 +251,14 @@ Large executions remain readable: rows with more than 12 steps use an aggregate 
 Dashboard cancellation is graceful: it stops future DAG scheduling, not work already handed to GoodJob. A pending pipeline becomes `canceled` immediately. A running pipeline becomes `canceling`, and its `pending` steps become `canceled`; jobs that are already enqueued, scheduled, or retrying run normally and retain their actual `succeeded`, `failed`, or `halted` outcomes. No GoodJob records are changed and no worker is force-terminated.
 
 After the last enqueued job finishes, the pipeline becomes `canceled`. Until then, `canceling` is an active, nonterminal state. A pipeline can remain `canceling` indefinitely if an enqueued job never reaches a terminal outcome.
+
+### Re-running a pipeline
+
+The dashboard can re-run a terminal pipeline (`succeeded`, `failed`, `halted`, `skipped`, or `canceled`). A re-run is a new standalone execution, not a retry or resumption of the historical one. It starts from the root steps using the source execution's stored JSON parameters and the pipeline's current Ruby definition, so code changes made since the source ran are applied.
+
+The source execution, its steps, jobs, callbacks, and status remain unchanged. Pipeline-chain relationships are not copied: upstream pipelines are not attached to the new execution, and downstream pipelines are not re-run. Normal branching and failure rules still apply, and jobs, callbacks, and external side effects may run again. Each confirmed submission intentionally creates another execution.
+
+If the pipeline class has been removed, the stored parameters are no longer compatible, or the current definition is invalid, the dashboard creates nothing and reports that the pipeline could not be re-run. Re-run controls remain disabled while an execution is `pending`, `running`, or `canceling`.
 
 ### Pipeline Executions
 

@@ -3,6 +3,7 @@
 ### Added
 
 - **Graceful dashboard cancellation** — administrators can stop future DAG scheduling without terminating already-enqueued, scheduled, or retrying GoodJob work; pipelines remain `canceling` until that work drains, then become terminal `canceled`.
+- **Standalone dashboard re-runs** — administrators can start a fresh execution of a terminal pipeline from its stored parameters and current class definition. The original execution remains unchanged, and historical pipeline-chain relationships are not copied.
 - **Read-only dashboard default** — pipeline mutation controls are hidden and rejected with `403 Forbidden` unless `GoodPipeline.dashboard_mutations_enabled = true` is configured explicitly. This setting does not replace authentication for the dashboard mount.
 - **Redesigned dashboard** — a responsive execution shell with pipeline-type navigation, composable status/time/search filters, offset pagination, KPIs, expandable execution rows, stage timelines, and dedicated execution and definition views.
 - **Persistent light and dark themes** — the dashboard now owns an isolated `data-gp-theme` attribute and persists the topbar toggle through a mount-aware Rails endpoint. Dark is now the default theme; existing users will see the dashboard change from light to dark after upgrading unless they select light.
@@ -35,7 +36,7 @@
 
 ### Upgrade notes
 
-- Existing dashboard mounts remain read-only after upgrading. Protect the engine mount with administrator authentication, then set `GoodPipeline.dashboard_mutations_enabled = true` to expose dashboard mutation controls, including cancellation. The theme preference remains available in read-only mode.
+- Existing dashboard mounts remain read-only after upgrading. Protect the engine mount with administrator authentication, then set `GoodPipeline.dashboard_mutations_enabled = true` to expose dashboard mutation controls, including cancellation and re-running terminal pipelines. The theme preference remains available in read-only mode.
 - Coordinator completion and enqueue operations for one pipeline are now serialized for cancellation correctness. Wide fan-in increases coordination query volume because every upstream completion locks and recomputes pipeline state; many concurrent completions, such as leaves in a wide fan-out, can contend on the pipeline row. Recursive fan-out scheduling reuses that lock and issues fewer queries than before.
 - Run `bin/rails generate good_pipeline:upgrade` and `bin/rails db:migrate` to add the dashboard indexes. See `docs/dashboard.md` for recovery steps if a concurrent index build is interrupted.
 - GoodJob may remove timing rows for early steps of a still-running pipeline; those steps render `—` rather than raising or issuing individual lookups.
