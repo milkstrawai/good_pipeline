@@ -23,7 +23,7 @@ module GoodPipeline
 
         @steps.each do |step|
           level = levels.fetch(Topology.token_for(step), 0)
-          stage = step.key.to_s.sub(/_\d+\z/, "")
+          stage = Topology.label_for(step).sub(/_\d+\z/, "")
           group_key = "#{stage}@#{level}"
           unless groups.key?(group_key)
             groups[group_key] = { stage: stage, level: level, steps: [] }
@@ -48,6 +48,7 @@ module GoodPipeline
       private
 
       def role_for(steps, downstream_tokens)
+        return :barrier if steps.any? { |step| Topology.barrier_step?(step) }
         return :branch if steps.any? { |step| Topology.branch_step?(step) }
         return :terminal if steps.all? { |step| !downstream_tokens.include?(Topology.token_for(step)) }
 

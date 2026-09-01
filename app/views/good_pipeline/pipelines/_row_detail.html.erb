@@ -50,7 +50,7 @@
             <% table_steps.each do |step| %>
               <% step_status = step.coordination_status.to_s; glyph, label, = status_meta.fetch(step_status, ["○", step_status, "pending"]); timing = timing_for.call(step); started_at, finished_at = timing_parts.call(timing); step_duration = started_at && finished_at ? finished_at - started_at : nil %>
               <tr>
-                <td class="gp-step-key"><%= step.key %></td>
+                <td class="gp-step-key"><%= step_display_key(step) %></td>
                 <td class="gp-job-class" title="<%= step.job_class %>"><%= step.job_class %></td>
                 <td><span class="gp-status gp-status--<%= step_status %>"><%= glyph %> <%= label %></span></td>
                 <td class="gp-step-duration"><%= duration.call(step_duration) %></td>

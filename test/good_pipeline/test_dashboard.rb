@@ -9,6 +9,7 @@ class TestDashboard < Minitest::Test
     keyword_init: true
   ) do
     def branch_step? = job_class == GoodPipeline::BRANCH_JOB_CLASS
+    def barrier_step? = job_class == GoodPipeline::BARRIER_JOB_CLASS
   end
   Pipeline = Struct.new(:created_at, :updated_at, :terminal, keyword_init: true) do
     def terminal? = terminal
@@ -146,6 +147,23 @@ class TestDashboard < Minitest::Test
     assert_equal %i[step branch terminal], stages.map(&:role)
     assert_equal "write ×2", stages.last.label
     assert_equal 2, stages.last.n
+  end
+
+  def test_definition_stages_include_readable_barrier_role
+    at = Time.utc(2026, 8, 10)
+    first = step(id: "a", key: "prepare", status: nil, job: nil, at: at)
+    barrier = step(
+      id: "b", key: "__good_pipeline_barrier_1", status: nil, job: nil, at: at + 1,
+      job_class: GoodPipeline::BARRIER_JOB_CLASS
+    )
+    terminal = step(id: "c", key: "publish", status: nil, job: nil, at: at + 2)
+
+    stages = GoodPipeline::Dashboard::DefinitionStages.new(
+      steps: [first, barrier, terminal], dependencies: [%w[a b], %w[b c]]
+    ).call
+
+    assert_equal %i[step barrier terminal], stages.map(&:role)
+    assert_equal "Barrier 1", stages[1].label
   end
 
   def test_step_timings_returns_running_and_completed_rows_and_omits_missing

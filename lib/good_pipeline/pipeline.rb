@@ -97,6 +97,7 @@ module GoodPipeline
         instance.instance_variable_set(:@steps_by_key, {}.freeze)
         instance.instance_variable_set(:@root_steps, [].freeze)
         instance.instance_variable_set(:@branch_aliases, {}.freeze)
+        instance.instance_variable_set(:@barrier_markers, [].freeze)
         instance
       end
     end
@@ -119,16 +120,19 @@ module GoodPipeline
     def coordination_queue_name = self.class.coordination_queue_name
     def callback_queue_name = self.class.callback_queue_name
 
-    def initialize(**kwargs) # rubocop:disable Metrics/MethodLength
+    def initialize(**kwargs) # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
       @params = kwargs.freeze
       @step_definitions = []
       @branch_aliases = {}
       @branch_context_stack = []
+      @barrier_markers = []
       @building = true
       configure(**kwargs)
+      @step_definitions = BarrierCompiler.call(@step_definitions, @barrier_markers) if @barrier_markers.any?
       @steps_by_key = GraphValidator.validate!(@step_definitions).freeze
       @step_definitions.freeze
       @branch_aliases.freeze
+      @barrier_markers.freeze
       @building = false
       @root_steps = @step_definitions.select { |step| step.dependencies.empty? }.freeze
       freeze
@@ -138,6 +142,13 @@ module GoodPipeline
 
     def configure(**_kwargs)
       raise NotImplementedError, "#{self.class} must implement #configure"
+    end
+
+    def barrier
+      raise ConfigurationError, "barrier can only be called inside configure" unless @building
+      raise ConfigurationError, "barrier is only supported at the top level of configure" if @branch_context_stack.any?
+
+      @barrier_markers << @step_definitions.length
     end
 
     def run(key, job_class, with: EMPTY_HASH, after: EMPTY_ARRAY, on_failure: nil, enqueue: EMPTY_HASH) # rubocop:disable Metrics/MethodLength
@@ -189,7 +200,8 @@ module GoodPipeline
         empty_arms: empty_arm_names
       )
 
-      @branch_aliases[key] = exit_step_keys(builder.arms)
+      exit_keys = exit_step_keys(builder.arms)
+      @branch_aliases[key] = exit_keys.empty? ? [key] : exit_keys
     end
 
     # Exit steps are the last steps in each arm — no other arm step depends on them.

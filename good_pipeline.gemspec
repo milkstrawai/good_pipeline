@@ -10,7 +10,7 @@ Gem::Specification.new do |spec|
 
   spec.summary = "DAG-based job pipeline orchestration for Rails, built on GoodJob"
   spec.description = "Define multi-step workflows as directed acyclic graphs " \
-                     "where each step is a GoodJob job. Handles dependency " \
+                     "where executable steps are GoodJob jobs. Handles dependency " \
                      "resolution, parallel execution, failure strategies, " \
                      "and lifecycle callbacks."
   spec.homepage = "https://github.com/milkstrawai/good_pipeline"

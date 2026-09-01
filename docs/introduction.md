@@ -43,7 +43,7 @@ Choose Geneva Drive when your workflow is inherently sequential and you need pau
 
 ## Features
 
-- `run` and `branch` DSL for defining step dependencies and conditional paths
+- `run`, `barrier`, and `branch` DSL for defining dependencies, phase boundaries, and conditional paths
 - Steps without dependencies run concurrently
 - Three failure strategies: `:halt`, `:continue`, `:ignore` (pipeline-level and per-step)
 - Pipeline chaining with serial chains, fan-out, fan-in, and parallel start

@@ -46,7 +46,7 @@ end
 
 ## DSL verbs
 
-There are two DSL verbs: `run` for defining steps, and `branch` for conditional paths. See [Conditional Branching](/branching) for the `branch` DSL.
+There are three DSL verbs: `run` for defining steps, `barrier` for phase boundaries, and `branch` for conditional paths. See [Conditional Branching](/branching) for the `branch` DSL.
 
 ## The `run` DSL verb
 
@@ -84,6 +84,39 @@ The `enqueue:` hash supports any option that ActiveJob's `enqueue` method accept
 | `good_job_notify` | Boolean | Whether GoodJob emits a NOTIFY event |
 
 `wait_until` is not supported because absolute times don't survive JSONB serialization and are semantically wrong in a DAG context — the step may not be enqueued until minutes or hours after the pipeline is created.
+
+## The `barrier` DSL verb
+
+`barrier` separates declarations into phases. Every entry step in the following phase waits for every step in the preceding phase:
+
+```ruby
+run :fetch_users,  FetchUsersJob
+run :fetch_orders, FetchOrdersJob
+
+barrier
+
+run :index_users,  IndexUsersJob
+run :index_orders, IndexOrdersJob
+
+barrier
+
+run :publish, PublishJob
+```
+
+Within a phase, jobs still use normal `after:` dependencies and run concurrently when possible. Explicit dependencies remain additive and cannot bypass the phase boundary. Multiple top-level barriers are supported, including immediately before or after a branch.
+
+Internally, GoodPipeline persists one structural barrier step and connects `every previous phase step → barrier → next phase entries`. The barrier is resolved synchronously by the coordinator and never creates a GoodJob job or batch. This remains linear in the number of phase steps and avoids an all-to-all dependency expansion. It appears as `Barrier 1`, `Barrier 2`, and so on in the dashboard and counts as a step.
+
+The verb is intentionally narrow:
+
+- It takes no arguments.
+- It cannot be first, last, consecutive, or used inside a branch arm.
+- A forward `after:` reference may stay within one phase, but cannot cross from an earlier phase to a later phase.
+- It is not a sleep or an ensure/finally construct. Existing `:halt`, `:continue`, and `:ignore` dependency semantics apply.
+
+::: warning Deployment ordering
+Workers from older GoodPipeline versions do not recognize the barrier sentinel. Deploy the barrier-aware gem version to every web and worker process that can run coordinator code before deploying pipeline definitions that call `barrier`.
+:::
 
 ## Step keys vs job classes
 

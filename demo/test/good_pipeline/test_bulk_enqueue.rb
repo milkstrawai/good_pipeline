@@ -190,6 +190,17 @@ class TestBulkEnqueue < ActiveSupport::TestCase
                  "Branch step should have been processed by try_enqueue_step fallback"
   end
 
+  def test_falls_back_to_structural_resolution_for_barrier_steps
+    pipeline = create_pipeline(status: "running", on_failure_strategy: "halt")
+    barrier = build_step(pipeline, key: "barrier", job_class: GoodPipeline::BARRIER_JOB_CLASS)
+
+    GoodPipeline::Coordinator.bulk_enqueue_steps([barrier.id])
+
+    assert_equal "succeeded", barrier.reload.coordination_status
+    assert_nil barrier.good_job_id
+    assert_nil barrier.good_job_batch_id
+  end
+
   # --- error handling ---
 
   def test_invalid_job_class_fails_step_without_blocking_others

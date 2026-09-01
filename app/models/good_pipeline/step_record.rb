@@ -55,6 +55,8 @@ module GoodPipeline
              source: :step
 
     def branch_step? = job_class == GoodPipeline::BRANCH_JOB_CLASS
+    def barrier_step? = job_class == GoodPipeline::BARRIER_JOB_CLASS
+    def structural_step? = branch_step? || barrier_step?
     def branch_arm_step? = branch_arm.present?
 
     def duration

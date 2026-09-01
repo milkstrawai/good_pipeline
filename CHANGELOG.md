@@ -2,6 +2,7 @@
 
 ### Added
 
+- **Pipeline phase barriers** — the new zero-argument `barrier` DSL verb inserts a persisted structural synchronization step between declaration phases. Every prior phase step converges on one barrier and following phase entries fan out from it, avoiding all-to-all dependency expansion. Barriers resolve synchronously without enqueuing an ActiveJob and appear as structural nodes in the dashboard.
 - **Graceful dashboard cancellation** — administrators can stop future DAG scheduling without terminating already-enqueued, scheduled, or retrying GoodJob work; pipelines remain `canceling` until that work drains, then become terminal `canceled`.
 - **Standalone dashboard re-runs** — administrators can start a fresh execution of a terminal pipeline from its stored parameters and current class definition. The original execution remains unchanged, and historical pipeline-chain relationships are not copied.
 - **Read-only dashboard default** — pipeline mutation controls are hidden and rejected with `403 Forbidden` unless `GoodPipeline.dashboard_mutations_enabled = true` is configured explicitly. This setting does not replace authentication for the dashboard mount.
@@ -19,6 +20,8 @@
 
 ### Changed
 
+- **Universal dependency normalization** — repeated keys in every `after:` list are deduplicated before validation and persistence, keeping dependency rows consistent with `pending_upstream_count` for pipelines with or without barriers.
+- **Terminal edge-release invariant** — enqueue-time configuration failures and steps skipped by partial `:halt` propagation now release downstream dependency counters before eligible descendants are resolved. Terminalization, counter release, and downstream scheduling remain in one pipeline-locked transaction.
 - **Pipeline-first coordination** — cancellation, completion, single enqueue, bulk enqueue, and status recomputation serialize on the owning pipeline row and then lock step rows in a consistent order. User jobs still execute concurrently; only coordination for the same pipeline is serialized, including downstream resolution and transactional GoodJob insertion.
 - **Fresh terminal derivation** — completion and explicit status recomputation derive running/canceling outcomes through one locked path. A redelivered terminal step also recomputes a nonterminal pipeline, repairing stale terminal status left by older coordinator versions or manual intervention.
 - **Post-commit chain handoff** — terminal chain propagation runs after all surrounding transactions commit, avoiding cross-pipeline lock nesting and making `GoodPipeline.run` safe inside a caller-managed transaction.
@@ -31,11 +34,16 @@
 
 ### Fixed
 
+- **Branch-arm pruning with additional dependencies** — every non-selected arm step is reconsidered as soon as its branch resolves and becomes `skipped_by_branch` even when another incoming dependency is unresolved or failed. Branch continuation no longer depends on concurrent completion order.
+- **All-empty branch continuation** — a branch whose arms are all empty now aliases to its structural sentinel, so `after: :branch_key` remains ordered after the branch decision with or without a preceding barrier.
+- **Multiple ignored halt failures** — bulk enqueue-time failures that all override pipeline-level `:halt` with `:ignore` now protect the union of their downstream subtrees instead of allowing each halt pass to skip another ignored subtree.
+- **Skipped dependencies under inherited ignore** — ordinary `skipped` and `canceled` steps are always treated as permanently unsatisfied, preventing descendants from remaining pending when a skipped step inherits pipeline-level `:ignore`.
 - **Dropped chain fan-in wake-ups** — `ChainCoordinator` now waits on a blocking `FOR UPDATE` lock instead of silently skipping a contended downstream pipeline with `SKIP LOCKED`.
 - **Database benchmark pipeline resolution** — dynamically generated benchmark pipeline classes are now registered as constants, allowing the enqueue, completion, recomputation, halt, and full-run sections of `bench/database_bench.rb` to execute.
 
 ### Upgrade notes
 
+- Barrier-aware deployments require two phases: first deploy this gem version to every web and worker process capable of running coordinator code; only after all old processes have stopped should application code using `barrier` be deployed. Older coordinators treat the new structural sentinel as an executable job class and cannot safely process barrier definitions.
 - Existing dashboard mounts remain read-only after upgrading. Protect the engine mount with administrator authentication, then set `GoodPipeline.dashboard_mutations_enabled = true` to expose dashboard mutation controls, including cancellation and re-running terminal pipelines. The theme preference remains available in read-only mode.
 - Coordinator completion and enqueue operations for one pipeline are now serialized for cancellation correctness. Wide fan-in increases coordination query volume because every upstream completion locks and recomputes pipeline state; many concurrent completions, such as leaves in a wide fan-out, can contend on the pipeline row. Recursive fan-out scheduling reuses that lock and issues fewer queries than before.
 - Run `bin/rails generate good_pipeline:upgrade` and `bin/rails db:migrate` to add the dashboard indexes. See `docs/dashboard.md` for recovery steps if a concurrent index build is interrupted.

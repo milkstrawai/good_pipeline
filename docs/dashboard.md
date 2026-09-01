@@ -65,13 +65,13 @@ If the stored type no longer resolves to a pipeline, the parameters are incompat
 
 ## Pipeline definitions
 
-The definitions catalog shows each type's strategy, declared steps and dependencies, edge count, execution count, and structural graph.
+The definitions catalog shows each type's strategy, declared steps and dependencies, edge count, execution count, and structural graph. Persisted barriers appear as readable `Barrier N` synchronization nodes; they count as steps but have no GoodJob link or duration.
 
 ![Pipeline Definitions](/screenshots/definitions.png)
 
 ## Scale behavior
 
-- Up to 12 steps, execution rows show one status marker per step; branch steps use diamond markers.
+- Up to 12 steps, execution rows show one status marker per step; branch and barrier steps use distinct structural markers.
 - Above 12 steps, rows use a stacked status bar and expanded step lists sort failures and active work first.
 - Above 60 steps, execution and definition DAGs open in an aggregated stage view. A full graph can still be requested.
 - Above 1,000 dependency edges, full Mermaid rendering is disabled with an explanation, independently of the step-count threshold. The stage view stays available.

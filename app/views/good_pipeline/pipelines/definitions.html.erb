@@ -32,7 +32,7 @@
               stages = definition_stages[pipeline.id] || definition_stages[pipeline.id.to_s] || definition_stages[pipeline.type] || []
               graph = dependencies.length > 1_000 ? "" : mermaid_definition_diagram(pipeline)
               has_branch = steps.any? { |step| step.respond_to?(:branch_step?) ? step.branch_step? : step.job_class == GoodPipeline::BRANCH_JOB_CLASS }
-              keys_by_id = steps.to_h { |step| [step.id, step.key] }
+              keys_by_id = steps.to_h { |step| [step.id, step_display_key(step)] }
               upstream = Hash.new { |hash, key| hash[key] = [] }
               dependencies.each do |dependency|
                 label = keys_by_id[dependency.depends_on_step_id]
@@ -70,7 +70,7 @@
                       <% steps.each do |step| %>
                         <% after = upstream[step.id] %>
                         <tr>
-                          <td class="gp-step-key" style="width:180px"><%= step.key %></td>
+                          <td class="gp-step-key" style="width:180px"><%= step_display_key(step) %></td>
                           <td class="gp-job-class" title="<%= step.job_class %>"><%= step.job_class %></td>
                           <td class="gp-step-duration" title="<%= after.join(', ') %>"><%= after.any? ? "after: #{after.first(3).join(', ')}#{after.length > 3 ? " +#{after.length - 3}" : ''}" : "root" %></td>
                         </tr>
