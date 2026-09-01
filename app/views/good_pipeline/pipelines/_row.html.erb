@@ -7,6 +7,8 @@
     "pending" => ["○", "pending", "pending"],
     "running" => ["●", "running", "running"],
     "enqueued" => ["●", "enqueued", "running"],
+    "canceling" => ["◐", "canceling", "canceling"],
+    "canceled" => ["⊘", "canceled", "canceled"],
     "succeeded" => ["✓", "succeeded", "succeeded"],
     "failed" => ["✗", "failed", "failed"],
     "halted" => ["⊘", "halted", "halted"],
@@ -35,7 +37,7 @@
   counts = steps.each_with_object(Hash.new(0)) { |step, memo| memo[step.coordination_status.to_s] += 1 }
   done = counts["succeeded"]
   many = steps.length > 12
-  stack_order = %w[succeeded failed halted enqueued running pending skipped skipped_by_branch]
+  stack_order = %w[succeeded failed halted enqueued running pending canceled skipped skipped_by_branch]
   status_var = ->(value) { value == "enqueued" ? "running" : value.start_with?("skipped") ? "skipped" : value }
   params_preview = pipeline.params.to_h.map { |key, value| "#{key}=#{value.to_json}" }.join(" · ")
   href_params = request.query_parameters.except("expanded")

@@ -47,7 +47,7 @@ Choose Geneva Drive when your workflow is inherently sequential and you need pau
 - Steps without dependencies run concurrently
 - Three failure strategies: `:halt`, `:continue`, `:ignore` (pipeline-level and per-step)
 - Pipeline chaining with serial chains, fan-out, fan-in, and parallel start
-- `on_complete`, `on_success`, `on_failure` lifecycle callbacks with exactly-once dispatch
+- `on_complete`, `on_success`, `on_failure` lifecycle callbacks with transactional enqueue-once dispatch
 - Mountable Rails engine with execution list, DAG visualization, and definitions catalog
 - Automatic cleanup that piggybacks on GoodJob's cleanup cycle
 - Postgres-only: no Redis, atomic enqueue transactions

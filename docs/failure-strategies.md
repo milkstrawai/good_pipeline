@@ -162,6 +162,12 @@ Remember to use `return halt_pipeline!` — without `return`, the job continues 
 If another step is already running when `halt_pipeline!` is called, that step continues to completion. Only `pending` steps are skipped. If the running step fails, the pipeline will derive to `failed`, not `succeeded`.
 :::
 
+## Dashboard cancellation
+
+Dashboard cancellation is separate from the pipeline's failure strategy. It stops future DAG scheduling rather than force-terminating work: pending steps become `canceled`, while jobs already enqueued, scheduled, or retrying run normally and keep their actual `succeeded`, `failed`, or `halted` step outcomes. While the pipeline is `canceling`, those outcomes do not trigger halt propagation or enqueue downstream steps.
+
+`canceling` is active and nonterminal. The pipeline becomes terminal `canceled` only after all enqueued work reaches a terminal outcome, so it may remain `canceling` indefinitely if a job never finishes. A canceled pipeline fires `on_complete`, but cancellation is not a failure and does not fire `on_failure`.
+
 ## Failure resolution table
 
 | Pipeline strategy | Step override | Effect when step fails |

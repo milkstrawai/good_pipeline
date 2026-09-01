@@ -1,9 +1,9 @@
 ## [Unreleased]
 
-## [0.5.0] - 2026-08-11
-
 ### Added
 
+- **Graceful dashboard cancellation** — administrators can stop future DAG scheduling without terminating already-enqueued, scheduled, or retrying GoodJob work; pipelines remain `canceling` until that work drains, then become terminal `canceled`.
+- **Read-only dashboard default** — pipeline mutation controls are hidden and rejected with `403 Forbidden` unless `GoodPipeline.dashboard_mutations_enabled = true` is configured explicitly. This setting does not replace authentication for the dashboard mount.
 - **Redesigned dashboard** — a responsive execution shell with pipeline-type navigation, composable status/time/search filters, offset pagination, KPIs, expandable execution rows, stage timelines, and dedicated execution and definition views.
 - **Persistent light and dark themes** — the dashboard now owns an isolated `data-gp-theme` attribute and persists the topbar toggle through a mount-aware Rails endpoint. Dark is now the default theme; existing users will see the dashboard change from light to dark after upgrading unless they select light.
 - **Scale-aware graph views** — large DAGs default to aggregated stage views, with full Mermaid rendering available up to a 1,000-edge safety limit.
@@ -12,17 +12,31 @@
 
 ### Breaking changes
 
+- **Coordinator activity hints removed** — `Coordinator.recompute_pipeline_status` no longer accepts `has_active_steps:` or `has_downstream_chains:`. Terminal status is always derived from fresh rows while the pipeline is locked; obsolete callers now fail loudly instead of having their hints ignored.
+- **Bulk enqueue contract tightened** — `Coordinator.bulk_enqueue_steps` raises `ArgumentError` when existing step IDs span multiple pipelines and now consistently returns `nil`. Both bulk and single-step enqueue refuse to schedule work unless the owning pipeline is `running`; `Coordinator.try_enqueue_step` reports that refusal as `false`.
 - **Rails 7.2 minimum** — Rails 7.1 is no longer supported. Rails 7.1 [reached upstream end-of-life in October 2025](https://rubyonrails.org/2025/10/29/new-rails-releases-and-end-of-support-announcement) and no longer receives bug fixes or security fixes.
 
 ### Changed
 
+- **Pipeline-first coordination** — cancellation, completion, single enqueue, bulk enqueue, and status recomputation serialize on the owning pipeline row and then lock step rows in a consistent order. User jobs still execute concurrently; only coordination for the same pipeline is serialized, including downstream resolution and transactional GoodJob insertion.
+- **Fresh terminal derivation** — completion and explicit status recomputation derive running/canceling outcomes through one locked path. A redelivered terminal step also recomputes a nonterminal pipeline, repairing stale terminal status left by older coordinator versions or manual intervention.
+- **Post-commit chain handoff** — terminal chain propagation runs after all surrounding transactions commit, avoiding cross-pipeline lock nesting and making `GoodPipeline.run` safe inside a caller-managed transaction.
+- **Step completion ownership metadata** — new step batches record their `pipeline_id`, avoiding an ownership lookup before completion locking. `StepFinishedJob` falls back to the step row for batches queued before this upgrade.
+- **Callback delivery semantics clarified** — `callbacks_dispatched_at` guarantees one transactional callback-job enqueue, not exactly-once user callback execution. Retry behavior remains application-configured, and callbacks should be idempotent.
 - **Execution pagination** — dashboard lists now use clamped offset pagination with a total page count instead of keyset cursors.
 - **Step timings** — dashboard timing data is batch-loaded from GoodJob, removing per-step lookups while preserving the same retention boundary as job records.
 - **Relative timestamps** — times under one minute now render as exact seconds such as `30s ago` instead of `just now`.
 - **Dashboard dependencies** — versioned dashboard CSS and JavaScript ship with the gem; graph rendering remains build-free and is initialized client-side in strict mode.
 
+### Fixed
+
+- **Dropped chain fan-in wake-ups** — `ChainCoordinator` now waits on a blocking `FOR UPDATE` lock instead of silently skipping a contended downstream pipeline with `SKIP LOCKED`.
+- **Database benchmark pipeline resolution** — dynamically generated benchmark pipeline classes are now registered as constants, allowing the enqueue, completion, recomputation, halt, and full-run sections of `bench/database_bench.rb` to execute.
+
 ### Upgrade notes
 
+- Existing dashboard mounts remain read-only after upgrading. Protect the engine mount with administrator authentication, then set `GoodPipeline.dashboard_mutations_enabled = true` to expose dashboard mutation controls, including cancellation. The theme preference remains available in read-only mode.
+- Coordinator completion and enqueue operations for one pipeline are now serialized for cancellation correctness. Wide fan-in increases coordination query volume because every upstream completion locks and recomputes pipeline state; many concurrent completions, such as leaves in a wide fan-out, can contend on the pipeline row. Recursive fan-out scheduling reuses that lock and issues fewer queries than before.
 - Run `bin/rails generate good_pipeline:upgrade` and `bin/rails db:migrate` to add the dashboard indexes. See `docs/dashboard.md` for recovery steps if a concurrent index build is interrupted.
 - GoodJob may remove timing rows for early steps of a still-running pipeline; those steps render `—` rather than raising or issuing individual lookups.
 

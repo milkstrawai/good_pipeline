@@ -79,7 +79,7 @@ GoodPipeline.run(
 
 Both pipelines start immediately. `MergeMediaPipeline` waits for both to succeed.
 
-Pipeline chaining is a first-class primitive — upstream/downstream relationships are tracked in a dedicated database table with atomic state propagation, rather than manually creating the next workflow in the last step of the current one.
+Pipeline chaining is a first-class primitive — upstream/downstream relationships are tracked in a dedicated database table and processed by an idempotent, row-locked coordinator, rather than manually creating the next workflow in the last step of the current one.
 
 ## How `.then` works internally
 
@@ -90,13 +90,15 @@ Pipeline chaining is a first-class primitive — upstream/downstream relationshi
 3. If any upstream has already reached a terminal state, immediately triggers chain propagation so the downstream is started or skipped
 4. After any upstream pipeline reaches a terminal state, the chain coordinator checks if all upstreams for each downstream have succeeded
 5. If all upstreams succeeded, the downstream pipeline starts (root steps are enqueued)
-6. If any upstream fails, halts, or is skipped, the downstream pipeline is set to `skipped`
+6. If any upstream fails, halts, is canceled, or is skipped, the downstream pipeline is set to `skipped`
 
-The chain coordinator uses the **same atomic row-locking pattern** (`FOR UPDATE SKIP LOCKED`) as the step-level coordinator to prevent double-start races. This means `.then` is safe to call at any time — even after the upstream has already completed.
+The chain coordinator uses a blocking `FOR UPDATE` row lock. A contending propagation waits, then rechecks the downstream pipeline while locked, so a fan-in wake-up cannot be silently dropped. This also makes `.then` safe to call after an upstream has already completed.
 
-## Failure propagation
+Individual chain transitions are atomic and propagation is idempotent, but delivery after an upstream commit is currently an in-process callback rather than a durable outbox. A process death in that narrow window can require explicit reconciliation of a still-pending downstream chain.
 
-If any upstream pipeline in a chain fails, halts, or is skipped:
+## Unsuccessful upstream propagation
+
+If any upstream pipeline in a chain fails, halts, is canceled, or is skipped:
 
 - The downstream pipeline transitions to `skipped`
 - Any further downstream pipelines are also recursively `skipped`
@@ -105,3 +107,5 @@ If any upstream pipeline in a chain fails, halts, or is skipped:
 ```
 A (failed) → B (skipped) → C (skipped) → D (skipped)
 ```
+
+A `canceling` upstream is still nonterminal, so its downstream pipelines remain pending while already-enqueued work drains. Once the upstream reaches `canceled`, normal chain propagation skips the pending downstream graph.

@@ -8,20 +8,23 @@ module GoodPipeline
     self.table_name = "good_pipeline_pipelines"
     self.inheritance_column = nil
 
-    TERMINAL_STATUSES = %w[succeeded failed halted skipped].freeze
+    TERMINAL_STATUSES = %w[succeeded failed halted skipped canceled].freeze
 
     VALID_TRANSITIONS = {
-      "pending" => %w[running skipped],
-      "running" => %w[succeeded failed halted]
+      "pending" => %w[running skipped canceled],
+      "running" => %w[succeeded failed halted canceling],
+      "canceling" => %w[canceled]
     }.freeze
 
     enum :status, {
       pending: "pending",
       running: "running",
+      canceling: "canceling",
       succeeded: "succeeded",
       failed: "failed",
       halted: "halted",
-      skipped: "skipped"
+      skipped: "skipped",
+      canceled: "canceled"
     }
 
     enum :on_failure_strategy, { halt: "halt", continue: "continue", ignore: "ignore" }

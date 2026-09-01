@@ -36,27 +36,29 @@ end
 
 | Callback | Fires when pipeline status is |
 |---|---|
-| `on_complete` | `succeeded`, `failed`, `halted`, or `skipped` |
+| `on_complete` | `succeeded`, `failed`, `halted`, `skipped`, or `canceled` |
 | `on_success` | `succeeded` |
 | `on_failure` | `failed` or `halted` |
 
-Note: `on_failure` does **not** fire for `skipped` pipelines. Being skipped by a chain is not considered a failure — only `on_complete` fires in that case.
+`skipped` and `canceled` pipelines trigger only `on_complete`; neither outcome is considered a failure. The nonterminal `canceling` state does not trigger callbacks.
 
 ## Asynchronous dispatch
 
-Callbacks are dispatched via `PipelineCallbackJob`, a GoodJob job enqueued after the terminal state transaction commits. A slow external call (Slack, webhooks) cannot stall the coordinator, callback execution cannot corrupt pipeline state, and callbacks get GoodJob's retry mechanism if they fail.
+Callbacks are dispatched via `PipelineCallbackJob`. The GoodJob row is enqueued in the same database transaction as the terminal pipeline state and becomes runnable after that transaction commits. A slow external call (Slack, webhooks) therefore cannot stall the coordinator, and callback execution cannot corrupt pipeline state.
 
-`PipelineCallbackJob` runs on the queue configured by `callback_queue_name` (default: `"good_pipeline_callbacks"`). This is separate from `coordination_queue_name` which controls the coordination jobs (`StepFinishedJob`, `PipelineReconciliationJob`), so slow callbacks don't block pipeline progression. See [Defining Pipelines](/defining-pipelines) for configuration options.
+`PipelineCallbackJob` runs on the queue configured by `callback_queue_name` (default: `"good_pipeline_callbacks"`). This is separate from `coordination_queue_name`, which controls step-finish coordination, so slow callbacks don't block pipeline progression. See [Defining Pipelines](/defining-pipelines) for configuration options.
 
-## Exactly-once guarantee
+## Enqueue-once guard and idempotency
 
-The callback bundle (`on_complete` + one of `on_success`/`on_failure`) is dispatched as a **single unit**. A `callbacks_dispatched_at` timestamp is set atomically inside a `FOR UPDATE` locked transaction, ensuring the bundle fires exactly once even if `recompute_pipeline_status` is called from multiple code paths (coordinator or batch reconciliation).
+The applicable callback bundle (`on_complete`, plus `on_success` or `on_failure` when relevant) is dispatched as a **single job**. A `callbacks_dispatched_at` timestamp is set atomically in the terminal-state transaction, ensuring only one callback job is enqueued even if terminal recomputation is requested more than once.
+
+Job execution itself is not exactly once. An interrupted execution, manual retry, or configured retry can invoke a callback again, so callback methods should be idempotent. `PipelineCallbackJob` does not declare `retry_on`; retry behavior for unhandled errors follows the application's Active Job and GoodJob configuration.
 
 ## Callback failure isolation
 
 If a callback method raises an error:
 
-- The `PipelineCallbackJob` fails and is retried by GoodJob
+- The `PipelineCallbackJob` fails; whether it is retried depends on the application's Active Job and GoodJob configuration
 - Pipeline status and step statuses are **not** affected
 - The pipeline remains in its terminal state
 - Other callback methods in the same bundle are still attempted

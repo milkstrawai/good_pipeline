@@ -18,15 +18,25 @@ module TopologyBuilder
   # Returns a Pipeline subclass for use in DSL construction benchmarks.
   def self.pipeline_class_for(topology, size)
     configs = step_configs_for(topology, size)
-    klass = Class.new(GoodPipeline::Pipeline) do
+    constant_name = pipeline_constant_name(topology, size)
+    klass = build_pipeline_class(configs)
+    Object.send(:remove_const, constant_name) if Object.const_defined?(constant_name, false)
+    Object.const_set(constant_name, klass)
+  end
+
+  def self.build_pipeline_class(configs)
+    Class.new(GoodPipeline::Pipeline) do
       define_method(:configure) do |**_kwargs|
         configs.each do |config|
           run config[:key], JOB_CLASS, after: config[:dependencies]
         end
       end
     end
-    klass.define_singleton_method(:name) { "BenchPipeline" }
-    klass
+  end
+
+  def self.pipeline_constant_name(topology, size)
+    topology_name = topology.to_s.split("_").map(&:capitalize).join
+    "Bench#{topology_name}#{size}Pipeline"
   end
 
   # Returns raw step configs as Array<Hash> with :key and :dependencies.
@@ -76,5 +86,6 @@ module TopologyBuilder
     configs
   end
 
-  private_class_method :linear_configs, :fan_out_configs, :fan_in_configs, :diamond_configs
+  private_class_method :build_pipeline_class, :pipeline_constant_name,
+                       :linear_configs, :fan_out_configs, :fan_in_configs, :diamond_configs
 end

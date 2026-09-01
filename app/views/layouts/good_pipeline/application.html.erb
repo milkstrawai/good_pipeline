@@ -18,6 +18,8 @@
     <script src="<%= frontend_static_path(id: "dashboard", format: :js) %>" defer nonce="<%= content_security_policy_nonce %>"></script>
   </head>
   <body>
+    <% if flash[:notice] %><div class="gp-flash gp-flash--notice" role="status"><%= flash[:notice] %></div><% end %>
+    <% if flash[:alert] %><div class="gp-flash gp-flash--alert" role="alert"><%= flash[:alert] %></div><% end %>
     <%= yield %>
     <div id="gp-aria-live" class="gp-sr-only" aria-live="polite" aria-atomic="true"></div>
   </body>

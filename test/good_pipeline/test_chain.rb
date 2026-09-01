@@ -11,7 +11,7 @@ class TestChain < Minitest::Test
       attributes.each { |key, value| public_send(:"#{key}=", value) }
     end
 
-    def terminal? = %w[succeeded failed halted skipped].include?(status)
+    def terminal? = %w[succeeded failed halted skipped canceled].include?(status)
     def halt_triggered? = false
     def reload = self
   end
@@ -63,9 +63,11 @@ class TestChain < Minitest::Test
 
   def test_delegates_terminal_to_first_record
     succeeded = FakePipelineRecord.new(id: 1, status: "succeeded")
-    running = FakePipelineRecord.new(id: 2, status: "running")
+    canceled = FakePipelineRecord.new(id: 2, status: "canceled")
+    running = FakePipelineRecord.new(id: 3, status: "running")
 
     assert_predicate GoodPipeline::Chain.new(succeeded), :terminal?
+    assert_predicate GoodPipeline::Chain.new(canceled), :terminal?
     refute_predicate GoodPipeline::Chain.new(running), :terminal?
   end
 

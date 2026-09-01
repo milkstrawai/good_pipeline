@@ -61,7 +61,7 @@ class TestBulkEnqueue < ActiveSupport::TestCase
     batch_record = GoodJob::BatchRecord.find(step.reload.good_job_batch_id)
 
     assert_equal "GoodPipeline::StepFinishedJob", batch_record.on_finish
-    assert_equal({ step_id: step.id }, batch_record.properties)
+    assert_equal({ step_id: step.id, pipeline_id: pipeline.id }, batch_record.properties)
   end
 
   # --- enqueue_options ---
@@ -154,6 +154,22 @@ class TestBulkEnqueue < ActiveSupport::TestCase
     assert_nil result
   end
 
+  def test_rejects_steps_from_multiple_pipelines_before_enqueuing
+    pipeline_a = create_pipeline(on_failure_strategy: "halt", status: "running")
+    pipeline_b = create_pipeline(on_failure_strategy: "halt", status: "running")
+    step_a = build_step(pipeline_a, key: "step_a", job_class: "DownloadJob")
+    step_b = build_step(pipeline_b, key: "step_b", job_class: "TranscodeJob")
+
+    error = assert_raises(ArgumentError) do
+      GoodPipeline::Coordinator.bulk_enqueue_steps([step_a.id, step_b.id])
+    end
+
+    assert_match(/same pipeline/, error.message)
+    assert_nil step_a.reload.good_job_id
+    assert_nil step_b.reload.good_job_id
+    assert_equal %w[pending pending], [step_a.coordination_status, step_b.coordination_status]
+  end
+
   # --- branch step fallback ---
 
   def test_falls_back_to_try_enqueue_step_for_branch_steps
@@ -189,5 +205,31 @@ class TestBulkEnqueue < ActiveSupport::TestCase
 
     assert_equal "failed", bad_step.reload.coordination_status
     assert_equal "GoodPipeline::ConfigurationError", bad_step.error_class
+  end
+
+  def test_each_bulk_configuration_failure_applies_its_halt_scope
+    pipeline = create_pipeline(on_failure_strategy: "halt")
+    pipeline.update_columns(status: "running")
+    ignored_failure = build_step(
+      pipeline,
+      id: "00000000-0000-4000-8000-000000000001",
+      key: "ignored_failure",
+      job_class: "MissingIgnoredJob",
+      on_failure_strategy: "ignore"
+    )
+    strict_failure = build_step(
+      pipeline,
+      id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+      key: "strict_failure",
+      job_class: "MissingStrictJob"
+    )
+    dependent = build_step(pipeline, key: "dependent", dependencies: [ignored_failure])
+
+    GoodPipeline::Coordinator.bulk_enqueue_steps([ignored_failure.id, strict_failure.id])
+
+    assert_equal "failed", ignored_failure.reload.coordination_status
+    assert_equal "failed", strict_failure.reload.coordination_status
+    assert_equal "skipped", dependent.reload.coordination_status
+    assert_equal "halted", pipeline.reload.status
   end
 end

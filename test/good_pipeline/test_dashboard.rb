@@ -41,6 +41,14 @@ class TestDashboard < Minitest::Test
     assert_equal 1, filters.page
   end
 
+  def test_filter_set_accepts_cancellation_statuses
+    canceling = GoodPipeline::Dashboard::FilterSet.from_params(status: "canceling")
+    canceled = GoodPipeline::Dashboard::FilterSet.from_params(status: "canceled")
+
+    assert_equal "canceling", canceling.status
+    assert_equal "canceled", canceled.status
+  end
+
   def test_stage_lanes_group_by_stage_and_level_with_worst_status
     now = Time.utc(2026, 8, 10, 12)
     pipeline = Pipeline.new(created_at: now - 100, updated_at: now, terminal: true)
@@ -85,6 +93,21 @@ class TestDashboard < Minitest::Test
     assert_nil lane.t0
     assert_nil lane.t1
     assert_equal "pending", lane.note
+  end
+
+  def test_canceled_stage_members_are_preserved_in_counts_and_note
+    now = Time.utc(2026, 8, 10, 12)
+    pipeline = Pipeline.new(created_at: now, updated_at: now, terminal: true)
+    canceled = step(id: "c", key: "work_00", status: "canceled", job: nil, at: now)
+    succeeded = step(id: "s", key: "work_01", status: "succeeded", job: nil, at: now + 1)
+
+    lane = GoodPipeline::Dashboard::StageLanes.new(
+      pipeline: pipeline, steps: [canceled, succeeded], dependencies: [], timings: {}, now: now
+    ).call.first
+
+    assert_equal "canceled", lane.worst
+    assert_equal "canceled", lane.note
+    assert_equal({ "canceled" => 1, "succeeded" => 1 }, lane.counts)
   end
 
   def test_running_timing_is_open_ended_and_zero_duration_is_safe
@@ -180,8 +203,14 @@ class TestDashboard < Minitest::Test
     assert_equal 0, result.failed_prior_7d
     assert_in_delta(12.5, result.p50)
     assert_equal [0] * 14, result.sparkline
-    assert_includes connection.sql.join("\n"), "status = 'running' OR"
-    assert_includes connection.sql.join("\n"), "p.type = 'VideoPipeline'"
+    sql = connection.sql.join("\n")
+
+    assert_includes sql, "p.status IN ('running', 'canceling') OR"
+    assert_includes sql, "'halted', 'canceled', 'skipped'"
+    assert_includes sql, "p.status = 'failed' AND"
+    assert_includes sql, "p.type = 'VideoPipeline'"
+    assert_equal 2, sql.scan("'halted', 'canceled', 'skipped'").length
+    assert_equal 2, sql.scan("p.status = 'failed'").length
   end
 
   private

@@ -6,7 +6,7 @@ GoodPipeline cleans up old terminal pipelines automatically when GoodJob runs it
 
 GoodPipeline subscribes to GoodJob's `cleanup_preserved_jobs` ActiveSupport notification. When GoodJob cleans its old job records, GoodPipeline deletes terminal pipelines older than the same timestamp.
 
-It uses GoodJob's existing retention period (default 14 days), runs whenever GoodJob's cleanup runs, and only touches terminal pipelines (`succeeded`, `failed`, `halted`, `skipped`). Running and pending pipelines are never deleted.
+It uses GoodJob's existing retention period (default 14 days), runs whenever GoodJob's cleanup runs, and only touches terminal pipelines (`succeeded`, `failed`, `halted`, `skipped`, `canceled`). Pending, running, and `canceling` pipelines are never deleted.
 
 ## What gets cleaned
 
@@ -38,4 +38,4 @@ You can trigger cleanup manually at any time:
 GoodPipeline.cleanup_preserved_pipelines(older_than: 7.days.ago)
 ```
 
-This deletes all terminal pipelines (and their associated steps, dependencies, and chains) created before the given timestamp.
+This deletes all terminal pipelines (and their associated steps, dependencies, and chains) updated before the given timestamp. A `canceling` pipeline remains nonterminal and is retained even if it is older than the threshold.

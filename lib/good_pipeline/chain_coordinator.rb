@@ -15,7 +15,7 @@ module GoodPipeline
         skipped_downstream_ids = nil
 
         PipelineRecord.transaction do
-          locked = PipelineRecord.lock("FOR UPDATE SKIP LOCKED").find_by(id: pipeline_id)
+          locked = PipelineRecord.lock("FOR UPDATE").find_by(id: pipeline_id)
           return unless locked&.pending?
 
           if should_skip_downstream?(locked)
@@ -32,7 +32,7 @@ module GoodPipeline
 
       def should_skip_downstream?(pipeline)
         pipeline.upstream_pipelines.any? do |upstream|
-          upstream.failed? || upstream.halted? || upstream.skipped?
+          upstream.failed? || upstream.halted? || upstream.skipped? || upstream.canceled?
         end
       end
 

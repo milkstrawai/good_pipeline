@@ -3,8 +3,7 @@
 module GoodPipeline
   class PipelineReconciliationJob < ActiveJob::Base
     def perform(batch, _context)
-      pipeline = GoodPipeline::PipelineRecord.find(batch.properties[:pipeline_id])
-      GoodPipeline::Coordinator.recompute_pipeline_status(pipeline)
+      GoodPipeline::Coordinator.recompute_pipeline_status(batch.properties[:pipeline_id])
     end
   end
 end

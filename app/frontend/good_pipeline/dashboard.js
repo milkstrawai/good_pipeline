@@ -238,6 +238,7 @@
       "  classDef succeeded fill:" + palette.success + ",color:#fff,stroke:" + palette.success,
       "  classDef failed fill:" + palette.failed + ",color:#fff,stroke:" + palette.failed,
       "  classDef halted fill:" + palette.halted + ",color:#fff,stroke:" + palette.halted,
+      "  classDef canceled fill:" + palette.node + ",color:" + palette.skipped + ",stroke:" + palette.skipped,
       "  classDef skipped fill:" + palette.node + ",color:" + palette.skipped + ",stroke:" + palette.skipped,
       "  classDef skipped_by_branch fill:" + palette.node + ",color:" + palette.skipped + ",stroke:" + palette.skipped,
       "  classDef branch fill:" + palette.branch + ",color:#fff,stroke:" + palette.branch,
@@ -504,6 +505,13 @@
   });
 
   document.addEventListener("submit", function (event) {
+    var confirmable = event.target.closest("form[data-gp-confirm]");
+    if (confirmable) {
+      var message = confirmable.getAttribute("data-gp-confirm");
+      if (message && !window.confirm(message)) event.preventDefault();
+      return;
+    }
+
     var form = event.target.closest("form[data-gp-search-form]");
     if (!form) return;
     event.preventDefault();

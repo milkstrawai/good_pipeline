@@ -10,6 +10,14 @@ module GoodPipeline
   class DashboardTest < ActionDispatch::IntegrationTest # rubocop:disable Metrics/ClassLength
     include ActiveSupport::Testing::TimeHelpers
 
+    setup do
+      GoodPipeline.dashboard_mutations_enabled = true
+    end
+
+    teardown do
+      GoodPipeline.dashboard_mutations_enabled = nil
+    end
+
     test "index renders the isolated dark dashboard and versioned assets" do
       execution = create_execution(type: "VideoProcessingPipeline", status: "succeeded")
       create_step(execution, key: "download", coordination_status: "succeeded")
@@ -21,6 +29,7 @@ module GoodPipeline
       assert_includes response.body, %(class="gp-app gp-app--dashboard")
       assert_includes response.body, %(id="gp-kpi")
       assert_includes response.body, %(id="gp-filters")
+      assert_select ".gp-status-filter-scroll > .gp-segment[role=group][aria-label='Status filter']", count: 1
       assert_includes response.body, %(id="gp-table")
       assert_no_match(/data-href/, response.body)
       asset_href = response.body[%r{href="([^"]*/frontend/static/0-5-0/dashboard\.css)"}, 1]
@@ -29,11 +38,15 @@ module GoodPipeline
       refute_includes response.body, "style.css"
       refute_includes response.body, "<script>"
 
+      assert_dashboard_css(asset_href)
+
       get "/good_pipeline/frontend/static/0-5-0/dashboard.js"
 
       assert_response :success
       assert_includes response.media_type, "javascript"
       assert_includes response.body, "AbortController"
+      assert_includes response.body, "form[data-gp-confirm]"
+      assert_includes response.body, "window.confirm"
     end
 
     test "status time type and search filters compose" do
@@ -146,6 +159,159 @@ module GoodPipeline
       assert_includes response.body, "n0"
       assert_includes response.body, "#quot;"
       refute_includes response.body, "raw mermaid"
+    end
+
+    test "cancel forms render with CSRF and confirmation on show and expanded row" do
+      running = create_execution(type: "CancelableRunningPipeline", status: "running")
+      create_step(running, key: "work", coordination_status: "enqueued")
+      pending = create_execution(type: "CancelablePendingPipeline", status: "pending")
+      create_step(pending, key: "work", coordination_status: "pending")
+
+      assert_equal "/good_pipeline/pipelines/#{running.id}/cancel",
+                   GoodPipeline::Engine.routes.url_helpers.cancel_pipeline_path(running)
+
+      with_forgery_protection do
+        get "/good_pipeline/pipelines/#{running.id}"
+      end
+
+      assert_response :success
+      assert_cancel_form(running)
+      assert_select "button[disabled]", text: "re-run pipeline", count: 1
+
+      with_forgery_protection do
+        get "/good_pipeline", params: { expanded: pending.id }
+      end
+
+      assert_response :success
+      assert_cancel_form(pending)
+      assert_select %(.gp-actions a[href="/good_pipeline/pipelines/#{pending.id}"]),
+                    text: "detail page + dag ↗", count: 1
+    end
+
+    test "read-only mode hides cancel controls and rejects direct posts" do
+      GoodPipeline.dashboard_mutations_enabled = nil
+      execution = create_execution(type: "ReadOnlyPipeline", status: "running")
+      step = create_step(execution, key: "work", coordination_status: "enqueued")
+
+      get "/good_pipeline/pipelines/#{execution.id}"
+
+      assert_response :success
+      assert_select "form.gp-action-form", count: 0
+      assert_select "button", text: "cancel requested", count: 0
+      assert_select "button", text: /re-run pipeline|retry failed step/, count: 0
+
+      get "/good_pipeline", params: { expanded: execution.id }
+
+      assert_response :success
+      assert_select "form.gp-action-form", count: 0
+      assert_select "button", text: /re-run pipeline|retry failed step/, count: 0
+
+      post "/good_pipeline/pipelines/#{execution.id}/cancel", headers: dashboard_csrf_headers
+
+      assert_response :forbidden
+      assert_equal "running", execution.reload.status
+      assert_equal "enqueued", step.reload.coordination_status
+    end
+
+    test "canceling and canceled statuses render without another cancel submission" do
+      canceling = create_execution(type: "CancelingPipeline", status: "canceling")
+      create_step(canceling, key: "already_drained", coordination_status: "canceled")
+      canceled = create_execution(type: "CanceledPipeline", status: "canceled")
+
+      get "/good_pipeline/pipelines/#{canceling.id}"
+
+      assert_response :success
+      assert_select ".gp-status--canceling", text: /canceling/, minimum: 1
+      assert_select "button[disabled]", text: "cancel requested", count: 1
+      assert_select "form.gp-action-form", count: 0
+      assert_select ".gp-status--canceled", text: /canceled/, minimum: 1
+      assert_includes response.body, ":::canceled"
+
+      get "/good_pipeline/pipelines/#{canceled.id}"
+
+      assert_response :success
+      assert_select ".gp-detail-header .gp-status--canceled", text: /canceled/, count: 1
+      assert_select "form.gp-action-form", count: 0
+      assert_select "button.gp-action--danger[disabled]", text: "cancel pipeline", count: 1
+
+      get "/good_pipeline", params: { status: "canceled" }
+
+      assert_response :success
+      assert_select %(tr[data-id="#{canceled.id}"] .gp-status--canceled), text: /canceled/, count: 1
+      assert_select '[data-gp-segment-value="canceled"].is-active', count: 1
+    end
+
+    test "cancel posts through the coordinator and redirects back with a notice" do
+      execution = create_execution(type: "CancelablePipeline", status: "running")
+      create_step(execution, key: "work", coordination_status: "enqueued")
+      referer = "http://www.example.com/good_pipeline?expanded=#{execution.id}"
+      headers = dashboard_csrf_headers.merge("HTTP_REFERER" => referer)
+
+      post "/good_pipeline/pipelines/#{execution.id}/cancel", headers: headers
+
+      assert_response :see_other
+      assert_redirected_to referer
+      assert_equal "Pipeline cancellation requested.", flash[:notice]
+      assert_nil flash[:alert]
+      assert_equal "canceling", execution.reload.status
+    end
+
+    test "cancel without a referrer falls back to detail and reports immediate cancellation" do
+      execution = create_execution(type: "TestPipeline", status: "pending")
+
+      post "/good_pipeline/pipelines/#{execution.id}/cancel", headers: dashboard_csrf_headers
+
+      assert_response :see_other
+      assert_redirected_to "/good_pipeline/pipelines/#{execution.id}"
+      assert_equal "Pipeline canceled.", flash[:notice]
+      assert_equal "canceled", execution.reload.status
+
+      follow_redirect!
+
+      assert_response :success
+      assert_select ".gp-flash.gp-flash--notice[role=status]", text: "Pipeline canceled.", count: 1
+      assert_select ".gp-flash--alert", count: 0
+    end
+
+    test "repeated cancel request remains an idempotent HTML success" do
+      execution = create_execution(type: "AlreadyCancelingPipeline", status: "canceling")
+      create_step(execution, key: "draining", coordination_status: "enqueued")
+
+      post "/good_pipeline/pipelines/#{execution.id}/cancel", headers: dashboard_csrf_headers
+
+      assert_response :see_other
+      assert_redirected_to "/good_pipeline/pipelines/#{execution.id}"
+      assert_equal "Pipeline cancellation requested.", flash[:notice]
+      assert_nil flash[:alert]
+    end
+
+    test "cancel conflict redirects safely and renders only an alert flash" do
+      execution = create_execution(type: "CompletedPipeline", status: "succeeded")
+      referer = "http://www.example.com/good_pipeline/pipelines/#{execution.id}"
+      headers = dashboard_csrf_headers.merge("HTTP_REFERER" => referer)
+
+      post "/good_pipeline/pipelines/#{execution.id}/cancel", headers: headers
+
+      assert_response :see_other
+      assert_redirected_to referer
+      assert_equal "Pipeline is already succeeded and cannot be canceled.", flash[:alert]
+      assert_nil flash[:notice]
+
+      follow_redirect!
+
+      assert_response :success
+      assert_select ".gp-flash.gp-flash--alert[role=alert]",
+                    text: "Pipeline is already succeeded and cannot be canceled.", count: 1
+      assert_select ".gp-flash--notice", count: 0
+    end
+
+    test "GET cannot invoke the cancel member endpoint" do
+      execution = create_execution(type: "NonMutatingPipeline", status: "running")
+
+      get "/good_pipeline/pipelines/#{execution.id}/cancel"
+
+      assert_response :not_found
+      assert_equal "running", execution.reload.status
     end
 
     test "show defaults pipelines over sixty steps to stages while retaining the full graph payload" do
@@ -339,6 +505,15 @@ module GoodPipeline
 
     private
 
+    def assert_dashboard_css(asset_href)
+      get asset_href
+
+      assert_response :success
+      assert_includes response.media_type, "css"
+      assert_includes response.body, ".gp-status-filter-scroll"
+      assert_match(/\.gp-flash\s*\{[^}]*box-sizing:border-box;/m, response.body)
+    end
+
     def create_execution(type:, status:, created_at: Time.current - 5.minutes, duration: 1.minute, # rubocop:disable Metrics/MethodLength
                          strategy: "halt")
       execution = PipelineRecord.create!(
@@ -352,6 +527,31 @@ module GoodPipeline
         updated_at: status == "running" ? created_at : created_at + duration
       )
       execution
+    end
+
+    def assert_cancel_form(execution)
+      action = "/good_pipeline/pipelines/#{execution.id}/cancel"
+      selector = %(form.gp-action-form[action="#{action}"][method="post"][data-gp-confirm])
+      assert_select selector, count: 1 do
+        assert_select "button.gp-action--danger", text: "cancel pipeline", count: 1
+        assert_select 'input[name="authenticity_token"]', count: 1
+      end
+      assert_includes response.body, "Future DAG steps won&#39;t be scheduled"
+      assert_includes response.body, "enqueued, scheduled, or retrying jobs will continue normally"
+    end
+
+    def dashboard_csrf_headers
+      get "/good_pipeline"
+      token = response.body[/name="csrf-token" content="([^"]+)"/, 1]
+      { "X-CSRF-Token" => token }
+    end
+
+    def with_forgery_protection
+      previous = ActionController::Base.allow_forgery_protection
+      ActionController::Base.allow_forgery_protection = true
+      yield
+    ensure
+      ActionController::Base.allow_forgery_protection = previous
     end
 
     def add_linear_steps(execution, keys) # rubocop:disable Metrics/MethodLength

@@ -125,6 +125,7 @@ module GoodPipeline
         "enqueued" => 4,
         "running" => 4,
         "pending" => 3,
+        "canceled" => 2,
         "skipped" => 2,
         "skipped_by_branch" => 2,
         "succeeded" => 1
@@ -137,6 +138,7 @@ module GoodPipeline
         "succeeded" => "succeeded",
         "failed" => "failed",
         "halted" => "halted",
+        "canceled" => "canceled",
         "skipped" => "skipped",
         "skipped_by_branch" => "skipped\u00B7br"
       }.freeze

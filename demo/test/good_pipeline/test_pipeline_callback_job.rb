@@ -62,6 +62,17 @@ class TestPipelineCallbackJob < ActiveSupport::TestCase
     assert_includes @callback_log, :on_failure
   end
 
+  def test_calls_only_on_complete_for_canceled
+    klass = build_pipeline_class(on_complete: :notify_complete, on_success: :notify_success,
+                                 on_failure: :notify_failure)
+    self.class.const_set(:CanceledPipeline, klass) unless self.class.const_defined?(:CanceledPipeline)
+
+    pipeline = create_pipeline(type: self.class::CanceledPipeline.name, status: "canceled")
+    GoodPipeline::PipelineCallbackJob.new.perform(pipeline.id, "canceled")
+
+    assert_equal [:on_complete], @callback_log
+  end
+
   def test_handles_nil_callbacks_gracefully
     klass = build_pipeline_class
     self.class.const_set(:NilCallbackPipeline, klass) unless self.class.const_defined?(:NilCallbackPipeline)

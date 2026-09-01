@@ -1,0 +1,21 @@
+<%
+  status = pipeline.status.to_s
+  confirmation = "Cancel this pipeline? Future DAG steps won't be scheduled; enqueued, scheduled, or retrying jobs will continue normally."
+%>
+<div class="gp-actions">
+  <% if GoodPipeline.dashboard_mutations_enabled? %>
+    <button class="gp-action" type="button" disabled title="not yet implemented"><%= %w[failed halted].include?(status) ? "retry failed step" : "re-run pipeline" %></button>
+    <% if %w[pending running].include?(status) %>
+      <%= button_to "cancel pipeline", cancel_pipeline_path(pipeline), method: :post,
+                    class: "gp-action gp-action--danger",
+                    form: { class: "gp-action-form", data: { gp_confirm: confirmation } } %>
+    <% elsif status == "canceling" %>
+      <button class="gp-action gp-action--danger" type="button" disabled>cancel requested</button>
+    <% elsif status == "canceled" %>
+      <button class="gp-action gp-action--danger" type="button" disabled title="pipeline already canceled">cancel pipeline</button>
+    <% end %>
+  <% end %>
+  <% if local_assigns[:detail_link] %>
+    <%= link_to "detail page + dag ↗", pipeline_path(pipeline), class: "gp-action gp-action--ghost" %>
+  <% end %>
+</div>
