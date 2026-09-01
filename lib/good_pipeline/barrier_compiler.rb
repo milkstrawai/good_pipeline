@@ -84,7 +84,7 @@ module GoodPipeline
         compiled_phase = add_previous_barrier_to_entries(phase, previous_barrier_key)
         next compiled_phase if index == phases.length - 1
 
-        compiled_phase + [build_barrier(barrier_keys.fetch(index), phase_exit_keys(compiled_phase))]
+        compiled_phase + [build_barrier(barrier_keys.fetch(index), compiled_phase.map(&:key))]
       end
     end
 
@@ -97,14 +97,6 @@ module GoodPipeline
 
         step.with_dependencies(step.dependencies + [previous_barrier_key])
       end
-    end
-
-    def phase_exit_keys(phase)
-      phase_keys = phase.to_set(&:key)
-      keys_with_downstream = phase.each_with_object(Set.new) do |step, keys|
-        step.dependencies.each { |key| keys << key if phase_keys.include?(key) }
-      end
-      phase.map(&:key).reject { |key| keys_with_downstream.include?(key) }
     end
 
     def build_barrier(key, dependencies)

@@ -17,7 +17,7 @@ class TestRunner < ActiveSupport::TestCase
   BarrierPipeline = Class.new(GoodPipeline::Pipeline) do
     def configure(**)
       run :fetch_a, DownloadJob
-      run :fetch_b, DownloadJob
+      run :fetch_b, DownloadJob, after: :fetch_a
       barrier
       run :publish, PublishJob
     end
@@ -100,7 +100,7 @@ class TestRunner < ActiveSupport::TestCase
     assert_not_nil record.good_job_batch_id
   end
 
-  def test_persists_barrier_as_structural_step_with_correct_counters # rubocop:disable Metrics/AbcSize
+  def test_persists_barrier_as_structural_step_with_correct_counters # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
     record = GoodPipeline::Runner.call(BarrierPipeline.build, start: false)
     barrier = record.steps.find_by!(job_class: GoodPipeline::BARRIER_JOB_CLASS)
     publish = record.steps.find_by!(key: "publish")
@@ -110,7 +110,8 @@ class TestRunner < ActiveSupport::TestCase
     assert_equal 1, publish.pending_upstream_count
     assert_nil barrier.good_job_id
     assert_nil barrier.good_job_batch_id
-    assert_equal 3, record.dependencies.count
+    assert_equal %w[fetch_a fetch_b], barrier.upstream_steps.order(:key).pluck(:key)
+    assert_equal 4, record.dependencies.count
     refute_includes record.steps.where.missing(:upstream_dependencies).pluck(:id), barrier.id
   end
 

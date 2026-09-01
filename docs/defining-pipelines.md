@@ -87,7 +87,7 @@ The `enqueue:` hash supports any option that ActiveJob's `enqueue` method accept
 
 ## The `barrier` DSL verb
 
-`barrier` separates declarations into phases. Every entry step in the following phase waits for every exit step in the preceding phase:
+`barrier` separates declarations into phases. Every entry step in the following phase waits for every step in the preceding phase:
 
 ```ruby
 run :fetch_users,  FetchUsersJob
@@ -105,7 +105,7 @@ run :publish, PublishJob
 
 Within a phase, jobs still use normal `after:` dependencies and run concurrently when possible. Explicit dependencies remain additive and cannot bypass the phase boundary. Multiple top-level barriers are supported, including immediately before or after a branch.
 
-Internally, GoodPipeline persists one structural barrier step and connects `previous phase exits → barrier → next phase entries`. The barrier is resolved synchronously by the coordinator and never creates a GoodJob job or batch. It appears as `Barrier 1`, `Barrier 2`, and so on in the dashboard and counts as a step.
+Internally, GoodPipeline persists one structural barrier step and connects `every previous phase step → barrier → next phase entries`. The barrier is resolved synchronously by the coordinator and never creates a GoodJob job or batch. This remains linear in the number of phase steps and avoids an all-to-all dependency expansion. It appears as `Barrier 1`, `Barrier 2`, and so on in the dashboard and counts as a step.
 
 The verb is intentionally narrow:
 

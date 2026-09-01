@@ -7,7 +7,7 @@ class TestBarrier < Minitest::Test
   FIRST_BARRIER = :__good_pipeline_barrier_1 # rubocop:disable Naming/VariableNumber
   SECOND_BARRIER = :__good_pipeline_barrier_2 # rubocop:disable Naming/VariableNumber
 
-  def test_compiles_phase_exits_through_barrier_to_phase_entries
+  def test_compiles_all_phase_steps_through_barrier_to_phase_entries
     pipeline = build_pipeline do
       run :a, TestBarrier::Job
       run :b, TestBarrier::Job, after: :a
@@ -18,7 +18,7 @@ class TestBarrier < Minitest::Test
     end
 
     assert_equal [:a, :b, :c, FIRST_BARRIER, :d, :e], pipeline.step_definitions.map(&:key)
-    assert_equal %i[b c], pipeline.steps_by_key.fetch(FIRST_BARRIER).dependencies
+    assert_equal %i[a b c], pipeline.steps_by_key.fetch(FIRST_BARRIER).dependencies
     assert_equal [FIRST_BARRIER], pipeline.steps_by_key.fetch(:d).dependencies
     assert_equal [:d], pipeline.steps_by_key.fetch(:e).dependencies
     assert_equal [:a], pipeline.root_steps.map(&:key)
@@ -29,13 +29,15 @@ class TestBarrier < Minitest::Test
       run :a, TestBarrier::Job
       barrier
       run :b, TestBarrier::Job
+      run :b_tail, TestBarrier::Job, after: :b
       barrier
       run :c, TestBarrier::Job
     end
 
     assert_equal [:a], pipeline.steps_by_key.fetch(FIRST_BARRIER).dependencies
     assert_equal [FIRST_BARRIER], pipeline.steps_by_key.fetch(:b).dependencies
-    assert_equal [:b], pipeline.steps_by_key.fetch(SECOND_BARRIER).dependencies
+    assert_equal [:b], pipeline.steps_by_key.fetch(:b_tail).dependencies
+    assert_equal %i[b b_tail], pipeline.steps_by_key.fetch(SECOND_BARRIER).dependencies
     assert_equal [SECOND_BARRIER], pipeline.steps_by_key.fetch(:c).dependencies
   end
 
@@ -58,7 +60,7 @@ class TestBarrier < Minitest::Test
     end
 
     assert_equal [:a], pipeline.steps_by_key.fetch(:b).dependencies
-    assert_equal [:b], pipeline.steps_by_key.fetch(FIRST_BARRIER).dependencies
+    assert_equal %i[b a], pipeline.steps_by_key.fetch(FIRST_BARRIER).dependencies
   end
 
   def test_cross_barrier_forward_reference_is_rejected
@@ -134,7 +136,7 @@ class TestBarrier < Minitest::Test
     end
   end
 
-  def test_barrier_after_branch_depends_on_arm_exits
+  def test_barrier_after_branch_depends_on_every_phase_step
     pipeline = build_pipeline do
       branch :route, by: :pick do
         on(:left) { run :left_a, TestBarrier::Job }
@@ -147,8 +149,23 @@ class TestBarrier < Minitest::Test
       run :finish, TestBarrier::Job
     end
 
-    assert_equal %i[left_a right_b], pipeline.steps_by_key.fetch(FIRST_BARRIER).dependencies
+    assert_equal %i[left_a right_a right_b route], pipeline.steps_by_key.fetch(FIRST_BARRIER).dependencies
     assert_equal [FIRST_BARRIER], pipeline.steps_by_key.fetch(:finish).dependencies
+  end
+
+  def test_barrier_tracks_external_dependency_source_for_pruned_branch_arm
+    pipeline = build_pipeline do
+      run :shared, TestBarrier::Job
+      branch :route, by: :pick do
+        on(:chosen) { run :chosen, TestBarrier::Job }
+        on(:unused) { run :unused, TestBarrier::Job, after: :shared }
+      end
+      barrier
+      run :finish, TestBarrier::Job
+    end
+
+    assert_equal %i[shared chosen unused route],
+                 pipeline.steps_by_key.fetch(FIRST_BARRIER).dependencies
   end
 
   def test_barrier_after_all_empty_branch_depends_on_sentinel

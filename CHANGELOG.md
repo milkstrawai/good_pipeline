@@ -2,7 +2,7 @@
 
 ### Added
 
-- **Pipeline phase barriers** — the new zero-argument `barrier` DSL verb inserts a persisted structural synchronization step between declaration phases. Prior phase exits converge on one barrier and following phase entries fan out from it, avoiding all-to-all dependency expansion. Barriers resolve synchronously without enqueuing an ActiveJob and appear as structural nodes in the dashboard.
+- **Pipeline phase barriers** — the new zero-argument `barrier` DSL verb inserts a persisted structural synchronization step between declaration phases. Every prior phase step converges on one barrier and following phase entries fan out from it, avoiding all-to-all dependency expansion. Barriers resolve synchronously without enqueuing an ActiveJob and appear as structural nodes in the dashboard.
 - **Graceful dashboard cancellation** — administrators can stop future DAG scheduling without terminating already-enqueued, scheduled, or retrying GoodJob work; pipelines remain `canceling` until that work drains, then become terminal `canceled`.
 - **Standalone dashboard re-runs** — administrators can start a fresh execution of a terminal pipeline from its stored parameters and current class definition. The original execution remains unchanged, and historical pipeline-chain relationships are not copied.
 - **Read-only dashboard default** — pipeline mutation controls are hidden and rejected with `403 Forbidden` unless `GoodPipeline.dashboard_mutations_enabled = true` is configured explicitly. This setting does not replace authentication for the dashboard mount.
@@ -34,6 +34,7 @@
 
 ### Fixed
 
+- **Branch-arm pruning with additional dependencies** — every non-selected arm step is reconsidered as soon as its branch resolves and becomes `skipped_by_branch` even when another incoming dependency is unresolved or failed. Branch continuation no longer depends on concurrent completion order.
 - **All-empty branch continuation** — a branch whose arms are all empty now aliases to its structural sentinel, so `after: :branch_key` remains ordered after the branch decision with or without a preceding barrier.
 - **Multiple ignored halt failures** — bulk enqueue-time failures that all override pipeline-level `:halt` with `:ignore` now protect the union of their downstream subtrees instead of allowing each halt pass to skip another ignored subtree.
 - **Skipped dependencies under inherited ignore** — ordinary `skipped` and `canceled` steps are always treated as permanently unsatisfied, preventing descendants from remaining pending when a skipped step inherits pipeline-level `:ignore`.

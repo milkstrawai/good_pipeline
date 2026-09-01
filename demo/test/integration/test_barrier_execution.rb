@@ -84,6 +84,41 @@ AllEmptyBranchAfterBarrierExecutionPipeline = Class.new(GoodPipeline::Pipeline) 
   def pick = params[:choice].to_sym
 end
 
+BranchExternalDependencyExecutionPipeline = Class.new(GoodPipeline::Pipeline) do
+  failure_strategy :continue
+
+  def configure(**)
+    run :shared, DownloadJob
+    branch :route, by: :pick do
+      on(:chosen) { run :chosen, DownloadJob }
+      on(:unused) { run :unused, DownloadJob, after: :shared }
+    end
+    run :finish, DownloadJob, after: :route
+  end
+
+  private
+
+  def pick = :chosen
+end
+
+BranchExternalDependencyBarrierPipeline = Class.new(GoodPipeline::Pipeline) do
+  failure_strategy :continue
+
+  def configure(**)
+    run :shared, DownloadJob
+    branch :route, by: :pick do
+      on(:chosen) { run :chosen, DownloadJob }
+      on(:unused) { run :unused, DownloadJob, after: :shared }
+    end
+    barrier
+    run :finish, DownloadJob
+  end
+
+  private
+
+  def pick = :chosen
+end
+
 # Integration assertions intentionally keep each coordination scenario together.
 # rubocop:disable Metrics/AbcSize, Metrics/ClassLength, Metrics/MethodLength
 class TestBarrierExecution < ActiveSupport::TestCase
@@ -153,6 +188,88 @@ class TestBarrierExecution < ActiveSupport::TestCase
     end
   end
 
+  def test_nonselected_arm_is_pruned_when_branch_resolves_before_external_failure
+    pipeline, steps = build_stopped_pipeline(BranchExternalDependencyExecutionPipeline)
+
+    GoodPipeline::Coordinator.bulk_enqueue_steps([steps.fetch("route").id])
+
+    assert_equal "skipped_by_branch", steps.fetch("unused").reload.coordination_status
+    assert_equal "enqueued", steps.fetch("chosen").reload.coordination_status
+
+    fail_shared_step(steps)
+    complete_selected_branch(steps)
+
+    assert_equal "skipped_by_branch", steps.fetch("unused").reload.coordination_status
+    assert_equal "enqueued", steps.fetch("finish").reload.coordination_status
+
+    GoodPipeline::Coordinator.complete_step(steps.fetch("finish").id, succeeded: true)
+
+    assert_equal "failed", pipeline.reload.status
+  end
+
+  def test_nonselected_arm_precedes_dependency_failure_when_external_failure_finishes_first
+    pipeline, steps = build_stopped_pipeline(BranchExternalDependencyExecutionPipeline)
+
+    fail_shared_step(steps)
+
+    assert_equal "pending", steps.fetch("unused").reload.coordination_status
+
+    GoodPipeline::Coordinator.bulk_enqueue_steps([steps.fetch("route").id])
+
+    assert_equal "skipped_by_branch", steps.fetch("unused").reload.coordination_status
+    complete_selected_branch(steps)
+
+    assert_equal "enqueued", steps.fetch("finish").reload.coordination_status
+
+    GoodPipeline::Coordinator.complete_step(steps.fetch("finish").id, succeeded: true)
+
+    assert_equal "failed", pipeline.reload.status
+  end
+
+  def test_barrier_waits_for_external_phase_work_after_unused_arm_is_pruned
+    pipeline, steps = build_stopped_pipeline(BranchExternalDependencyBarrierPipeline)
+    shared = steps.fetch("shared")
+    barrier = steps.fetch("__good_pipeline_barrier_1")
+    shared.update_columns(coordination_status: "enqueued")
+
+    GoodPipeline::Coordinator.bulk_enqueue_steps([steps.fetch("route").id])
+    GoodPipeline::Coordinator.complete_step(steps.fetch("chosen").id, succeeded: true)
+
+    assert_equal "skipped_by_branch", steps.fetch("unused").reload.coordination_status
+    assert_equal "pending", barrier.reload.coordination_status
+    assert_equal 1, barrier.pending_upstream_count
+    assert_equal "pending", steps.fetch("finish").reload.coordination_status
+
+    GoodPipeline::Coordinator.complete_step(shared.id, succeeded: true)
+
+    assert_equal "succeeded", barrier.reload.coordination_status
+    assert_equal "enqueued", steps.fetch("finish").reload.coordination_status
+
+    GoodPipeline::Coordinator.complete_step(steps.fetch("finish").id, succeeded: true)
+
+    assert_equal "succeeded", pipeline.reload.status
+  end
+
+  def test_failed_phase_step_does_not_skip_barrier_before_selected_arm_finishes
+    pipeline, steps = build_stopped_pipeline(BranchExternalDependencyBarrierPipeline)
+    barrier = steps.fetch("__good_pipeline_barrier_1")
+
+    fail_shared_step(steps)
+    GoodPipeline::Coordinator.bulk_enqueue_steps([steps.fetch("route").id])
+
+    assert_equal "skipped_by_branch", steps.fetch("unused").reload.coordination_status
+    assert_equal "enqueued", steps.fetch("chosen").reload.coordination_status
+    assert_equal "pending", barrier.reload.coordination_status
+    assert_equal 1, barrier.pending_upstream_count
+    assert_equal "pending", steps.fetch("finish").reload.coordination_status
+
+    GoodPipeline::Coordinator.complete_step(steps.fetch("chosen").id, succeeded: true)
+
+    assert_equal "skipped", barrier.reload.coordination_status
+    assert_equal "skipped", steps.fetch("finish").reload.coordination_status
+    assert_equal "failed", pipeline.reload.status
+  end
+
   def test_barrier_waits_for_last_upstream_and_redelivery_does_not_double_release
     pipeline, step_a, step_b, barrier, publish = build_manual_barrier_pipeline(strategy: "continue")
 
@@ -209,7 +326,7 @@ class TestBarrierExecution < ActiveSupport::TestCase
     assert_equal "failed", pipeline.reload.status
   end
 
-  def test_partial_halt_skip_releases_phase_exit_to_barrier
+  def test_partial_halt_skip_releases_phase_step_to_barrier
     pipeline = create_pipeline(status: "running", on_failure_strategy: "halt")
     optional = build_step(pipeline, key: "optional", on_failure_strategy: "ignore")
     prepare = build_step(pipeline, key: "prepare")
@@ -218,7 +335,7 @@ class TestBarrierExecution < ActiveSupport::TestCase
       pipeline,
       key: "barrier",
       job_class: GoodPipeline::BARRIER_JOB_CLASS,
-      dependencies: [optional, finalize]
+      dependencies: [optional, prepare, finalize]
     )
     publish = build_step(pipeline, key: "publish", dependencies: [barrier])
     optional.update_columns(coordination_status: "enqueued")
@@ -227,12 +344,15 @@ class TestBarrierExecution < ActiveSupport::TestCase
     GoodPipeline::Coordinator.complete_step(optional.id, succeeded: false)
 
     assert_equal "skipped", finalize.reload.coordination_status
-    assert_equal "skipped", barrier.reload.coordination_status
-    assert_equal 0, barrier.pending_upstream_count
-    assert_equal "skipped", publish.reload.coordination_status
+    assert_equal "pending", barrier.reload.coordination_status
+    assert_equal 1, barrier.pending_upstream_count
+    assert_equal "pending", publish.reload.coordination_status
 
     GoodPipeline::Coordinator.complete_step(prepare.id, succeeded: true)
 
+    assert_equal "skipped", barrier.reload.coordination_status
+    assert_equal 0, barrier.pending_upstream_count
+    assert_equal "skipped", publish.reload.coordination_status
     assert_equal "halted", pipeline.reload.status
   end
 
@@ -297,7 +417,7 @@ class TestBarrierExecution < ActiveSupport::TestCase
       pipeline,
       key: "barrier",
       job_class: GoodPipeline::BARRIER_JOB_CLASS,
-      dependencies: [exit_a, exit_b]
+      dependencies: [failure_a, failure_b, exit_a, exit_b]
     )
     publish = build_step(pipeline, key: "publish", dependencies: [barrier])
 
@@ -333,6 +453,22 @@ class TestBarrierExecution < ActiveSupport::TestCase
   end
 
   private
+
+  def build_stopped_pipeline(pipeline_class)
+    pipeline = GoodPipeline::Runner.call(pipeline_class.build, start: false)
+    pipeline.transition_to!(:running)
+    [pipeline, pipeline.steps.index_by(&:key)]
+  end
+
+  def fail_shared_step(steps)
+    shared = steps.fetch("shared")
+    shared.update_columns(coordination_status: "enqueued")
+    GoodPipeline::Coordinator.complete_step(shared.id, succeeded: false)
+  end
+
+  def complete_selected_branch(steps)
+    GoodPipeline::Coordinator.complete_step(steps.fetch("chosen").id, succeeded: true)
+  end
 
   def build_manual_barrier_pipeline(strategy:)
     pipeline = create_pipeline(status: "running", on_failure_strategy: strategy)

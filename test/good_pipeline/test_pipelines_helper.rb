@@ -246,6 +246,38 @@ class TestPipelinesHelper < Minitest::Test
     assert_equal 4, builder.rendered_edge_count
   end
 
+  def test_mixed_branch_hides_redundant_raw_sentinel_to_barrier_edge
+    branch = FakeStep.new(
+      key: "route", coordination_status: "succeeded", job_class: GoodPipeline::BRANCH_JOB_CLASS,
+      id: "branch", empty_arms: ["skip"]
+    )
+    work = FakeStep.new(
+      key: "work", coordination_status: "succeeded", id: "work", branch_arm: "work", branch_key: "route"
+    )
+    barrier = FakeStep.new(
+      key: "__good_pipeline_barrier_1", coordination_status: "succeeded",
+      job_class: GoodPipeline::BARRIER_JOB_CLASS, id: "barrier"
+    )
+    publish = FakeStep.new(key: "publish", coordination_status: "succeeded", id: "publish")
+    dependencies = [
+      FakeDependency.new(depends_on_step: branch, step: work, step_id: "work"),
+      FakeDependency.new(depends_on_step: branch, step: barrier, step_id: "barrier"),
+      FakeDependency.new(depends_on_step: work, step: barrier, step_id: "barrier"),
+      FakeDependency.new(depends_on_step: barrier, step: publish, step_id: "publish")
+    ]
+    builder = GoodPipeline::MermaidDiagramBuilder.new(
+      FakePipeline.new(steps: [branch, work, barrier, publish], dependencies: dependencies)
+    )
+    graph = builder.definition_diagram
+
+    assert_includes graph, "n0 -->|work| n1"
+    assert_includes graph, "n0 -->|skip| n2"
+    assert_includes graph, "  n1 --> n2"
+    refute_includes graph, "  n0 --> n2"
+    assert_equal 4, builder.edge_count
+    assert_equal 5, builder.rendered_edge_count
+  end
+
   # --- mermaid_diagram ---
 
   def test_mermaid_diagram_includes_status_classes

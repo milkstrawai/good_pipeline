@@ -116,7 +116,7 @@ run :index_users,  IndexUsersJob
 run :index_orders, IndexOrdersJob
 ```
 
-The barrier is a persisted structural step, not an ActiveJob. It is resolved synchronously after all preceding phase exits become terminal, creates no GoodJob record, and appears as a Barrier node in the dashboard. Normal failure semantics apply: `:ignore` failures permit progress, while a permanently unsatisfied dependency skips the barrier and the later phase.
+The barrier is a persisted structural step, not an ActiveJob. It is resolved synchronously after every step in the preceding phase becomes terminal, creates no GoodJob record, and appears as a Barrier node in the dashboard. Normal failure semantics apply: `:ignore` failures permit progress, while a permanently unsatisfied dependency skips the barrier and the later phase.
 
 ### Failure strategies
 

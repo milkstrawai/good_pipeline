@@ -131,11 +131,11 @@ Ordinary `skipped` and `canceled` upstream steps are always permanently unsatisf
 
 ## Failure behavior across a barrier
 
-A barrier depends on every exit from its preceding phase, so the same rules apply at the phase boundary:
+A barrier depends on every step in its preceding phase, so the same rules apply at the phase boundary:
 
-- A failed exit using `:ignore` satisfies the barrier edge.
-- A failed exit using `:continue` makes the barrier and its later phase `skipped`.
-- Pipeline-level `:halt` skips pending work. If the failed step has a step-level `:ignore`, its downstream subtree remains protected, but unrelated phase paths may be skipped. A skipped phase exit still blocks the barrier, so the barrier skips rather than continuing.
+- A failed phase step using `:ignore` satisfies the barrier edge.
+- A failed phase step using `:continue` makes the barrier and its later phase `skipped`.
+- Pipeline-level `:halt` skips pending work. If the failed step has a step-level `:ignore`, its downstream subtree remains protected, but unrelated phase paths may be skipped. Any ordinarily skipped phase step still blocks the barrier, so the barrier skips rather than continuing.
 - Cancellation cancels a pending barrier and its later phase.
 
 Whenever eligible work remains, every new terminal step releases its outgoing dependency counter exactly once. This includes enqueue-time configuration failures and steps skipped by partial halt propagation, preventing a barrier or ordinary fan-in from remaining pending after all upstreams are terminal.

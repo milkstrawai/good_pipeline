@@ -124,7 +124,12 @@ module GoodPipeline
     end
 
     def visible_dependency_edges
-      @visible_dependency_edges ||= @edges.reject { |edge| all_empty_branch?(edge.upstream) }
+      @visible_dependency_edges ||= @edges.reject { |edge| hidden_dependency_edge?(edge) }
+    end
+
+    def hidden_dependency_edge?(edge)
+      all_empty_branch?(edge.upstream) ||
+        (branch_step?(edge.upstream) && barrier_step?(edge.downstream))
     end
 
     def visible_terminal_steps

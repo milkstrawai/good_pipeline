@@ -45,6 +45,8 @@ end
 
 The decision method has access to `params` and can query any application state (database, cache, external APIs). It runs once per branch per pipeline execution — the result is cached.
 
+Every non-matching arm step is classified as `skipped_by_branch` as soon as the decision is known, even if that step also declares additional `after:` dependencies. Those dependencies do not delay branch pruning or turn a non-selected step into an ordinary failure-driven skip.
+
 ## Multiple steps per arm
 
 Each arm can contain multiple steps with their own `after:` dependencies:

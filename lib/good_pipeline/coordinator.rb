@@ -318,14 +318,17 @@ module GoodPipeline
 
       def resolve_step_ids_locked(pipeline, step_ids)
         any_enqueued = false
-        Array(step_ids).each do |step_id|
+        Array(step_ids).uniq.each do |step_id|
           any_enqueued = true if try_enqueue_step_locked(pipeline, step_id)
         end
         any_enqueued
       end
 
       def resolve_step(locked_step) # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
-        if should_skip?(locked_step)
+        if BranchResolver.skipped_by_branch?(locked_step)
+          locked_step.transition_coordination_status_to!(:skipped_by_branch)
+          release_downstream_edges_locked(locked_step.id)
+        elsif should_skip?(locked_step)
           locked_step.transition_coordination_status_to!(:skipped)
           release_downstream_edges_locked(locked_step.id)
         elsif locked_step.barrier_step? && all_upstreams_satisfied?(locked_step)
@@ -333,10 +336,8 @@ module GoodPipeline
           release_downstream_edges_locked(locked_step.id)
         elsif locked_step.branch_step? && all_upstreams_satisfied?(locked_step)
           BranchResolver.resolve(locked_step)
-          release_downstream_edges_locked(locked_step.id)
-        elsif BranchResolver.skipped_by_branch?(locked_step)
-          locked_step.transition_coordination_status_to!(:skipped_by_branch)
-          release_downstream_edges_locked(locked_step.id)
+          ready_step_ids = release_downstream_edges_locked(locked_step.id)
+          (ready_step_ids + branch_arm_step_ids(locked_step)).uniq
         else
           enqueue_user_job(locked_step) if all_upstreams_satisfied?(locked_step)
           nil
@@ -345,6 +346,10 @@ module GoodPipeline
 
       def should_skip?(step)
         step.pending? && step.upstream_steps.any? { |upstream| permanently_unsatisfied?(upstream) }
+      end
+
+      def branch_arm_step_ids(branch_step)
+        branch_step.downstream_steps.filter_map { |step| step.id if step.branch_arm_step? }
       end
 
       def permanently_unsatisfied?(upstream)
