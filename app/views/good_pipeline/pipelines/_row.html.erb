@@ -81,8 +81,8 @@
     <% else %>
       <span class="gp-step-dots" aria-hidden="true">
         <% steps.each do |step| %>
-          <% step_status = step.coordination_status.to_s; branch = step.respond_to?(:branch_step?) ? step.branch_step? : step.job_class == GoodPipeline::BRANCH_JOB_CLASS %>
-          <span class="gp-step-dot <%= 'is-branch' if branch %>" style="--gp-status:var(--st-<%= status_var.call(step_status) %>);--gp-opacity:<%= step_status == 'pending' ? 0.35 : 1 %>" title="<%= step.key %>: <%= step_status %>"></span>
+          <% step_status = step.coordination_status.to_s; branch = step.respond_to?(:branch_step?) ? step.branch_step? : step.job_class == GoodPipeline::BRANCH_JOB_CLASS; barrier = step.respond_to?(:barrier_step?) ? step.barrier_step? : step.job_class == GoodPipeline::BARRIER_JOB_CLASS %>
+          <span class="gp-step-dot <%= 'is-branch' if branch %> <%= 'is-barrier' if barrier %>" style="--gp-status:var(--st-<%= status_var.call(step_status) %>);--gp-opacity:<%= step_status == 'pending' ? 0.35 : 1 %>" title="<%= step_display_key(step) %>: <%= step_status %>"></span>
         <% end %>
       </span>
     <% end %>

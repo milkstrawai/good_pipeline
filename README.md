@@ -102,6 +102,22 @@ run :step_key, JobClass,
   enqueue:    { queue: :media, priority: 10 }  # options passed to job.enqueue()
 ```
 
+### Phase barriers
+
+Use `barrier` when every entry into the next declaration phase must wait for the whole preceding phase:
+
+```ruby
+run :fetch_users,  FetchUsersJob
+run :fetch_orders, FetchOrdersJob
+
+barrier
+
+run :index_users,  IndexUsersJob
+run :index_orders, IndexOrdersJob
+```
+
+The barrier is a persisted structural step, not an ActiveJob. It is resolved synchronously after all preceding phase exits become terminal, creates no GoodJob record, and appears as a Barrier node in the dashboard. Normal failure semantics apply: `:ignore` failures permit progress, while a permanently unsatisfied dependency skips the barrier and the later phase.
+
 ### Failure strategies
 
 Set at the pipeline level with `failure_strategy`:
@@ -158,7 +174,7 @@ branch :quality_check, after: :analyze, by: :needs_processing do
 end
 ```
 
-The dashboard renders branches as diamond decision nodes with labeled edges.
+The dashboard renders branches as diamond decision nodes with labeled edges and barriers as structural synchronization nodes.
 
 ### Pipeline chaining
 

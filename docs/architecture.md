@@ -7,7 +7,7 @@ Internal architecture for contributors and anyone who wants to understand how th
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                        DSL Layer                            │
-│    Pipeline.configure defines the DAG topology              │
+│    Pipeline.configure defines and compiles DAG topology     │
 │    Step keys are graph identity; job classes are impl       │
 └─────────────────────────┬───────────────────────────────────┘
                           │
@@ -26,7 +26,7 @@ Internal architecture for contributors and anyone who wants to understand how th
                           │
 ┌─────────────────────────▼───────────────────────────────────┐
 │                   Execution Layer                            │
-│    One GoodJob::Batch per step                              │
+│    One GoodJob::Batch per executable step                   │
 │    User jobs enqueued via perform_later — fully untouched   │
 │    Batch on_finish is the sole terminal signal              │
 │    Enqueue is transactionally coupled to row transition     │
@@ -73,7 +73,7 @@ GoodPipeline uses four Postgres tables:
 | `id` | uuid | Primary key |
 | `pipeline_id` | uuid | Foreign key |
 | `key` | string | Step key — graph identity |
-| `job_class` | string | ActiveJob class name |
+| `job_class` | string | ActiveJob class name or structural `GoodPipeline::Branch` / `GoodPipeline::Barrier` sentinel |
 | `params` | jsonb | Arguments passed to `with:` |
 | `coordination_status` | string | `pending`, `enqueued`, `succeeded`, `failed`, `skipped`, `skipped_by_branch`, `halted`, `canceled` |
 | `on_failure_strategy` | string | Step-level override (nullable) |
@@ -105,9 +105,9 @@ Unique constraint: `(pipeline_id, key)` — enforces step key uniqueness within 
 | `upstream_pipeline_id` | uuid | The pipeline that must finish first |
 | `downstream_pipeline_id` | uuid | The pipeline to start after |
 
-## One batch per step
+## One batch per executable step
 
-Each step has its own `GoodJob::Batch`. The user's job is enqueued via `perform_later` into that batch, preserving all ActiveJob semantics (instrumentation, callbacks, serialization, queue routing, retries, `discard_on`).
+Each executable step has its own `GoodJob::Batch`. The user's job is enqueued via `perform_later` into that batch, preserving all ActiveJob semantics (instrumentation, callbacks, serialization, queue routing, retries, `discard_on`). Structural branch and barrier steps are persisted for coordination and observability but are resolved synchronously without a GoodJob batch or job.
 
 When the batch's `on_finish` fires, `StepFinishedJob` receives the signal and delegates to the coordinator. `StepFinishedJob` is a thin dispatcher — it does not own any state transitions.
 
@@ -120,6 +120,14 @@ The `Coordinator` class is the sole owner of all `coordination_status` transitio
 3. **Coordination** — records the outcome, applies failure policy, resolves downstream enqueue, then derives pipeline status from fresh step rows before commit
 
 Cancellation, single-step enqueue, bulk enqueue, and completion all follow this order. This serializes the cancellation barrier against new enqueue attempts: whichever transaction obtains the pipeline lock first completes its state change before the other rechecks the current pipeline status. User jobs execute outside these coordination transactions; only their GoodJob insertion is transactionally coupled to the step transition.
+
+`pending_upstream_count` represents upstream edges whose source has not reached a terminal coordination status. Any terminal transition that leaves pending descendants eligible releases its outgoing edges exactly once inside the same transaction. The coordinator terminalizes all affected steps first, decrements all relevant counters second, and only then examines newly ready descendants. Full cancellation and unconditional halt may omit edge release because no pending descendant remains eligible.
+
+### Barrier compilation and resolution
+
+After `configure`, barrier markers divide user definitions into phases. The compiler validates the authored DAG, finds each phase's entries and exits from graph topology, inserts one structural barrier definition per boundary, and validates the compiled DAG. Generated edges are deduplicated before Runner persists dependency rows.
+
+At runtime, the last terminal phase exit reduces the barrier's counter to zero. Under the pipeline lock, the coordinator marks the barrier `succeeded` when all exits are satisfied, or `skipped` when one is permanently unsatisfied, releases its outgoing edges, and recursively resolves the following phase. No worker thread waits and no no-op job is enqueued.
 
 ### Graceful cancellation
 

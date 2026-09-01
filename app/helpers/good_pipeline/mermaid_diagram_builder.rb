@@ -25,7 +25,12 @@ module GoodPipeline
     end
 
     def definition_diagram
-      build_diagram { |step| branch_step?(step) ? "branch" : "step" }
+      build_diagram do |step|
+        next "branch" if branch_step?(step)
+        next "barrier" if barrier_step?(step)
+
+        "step"
+      end
     end
 
     def status_diagram
@@ -47,9 +52,9 @@ module GoodPipeline
     # DAG dependency count used by the product's >1000-edge contract.
     def rendered_edge_count
       @rendered_edge_count ||= begin
-        terminal_edges = terminal_steps.length
+        terminal_edges = visible_terminal_steps.length
         empty_arm_edges = empty_arm_edge_lines.length
-        @edges.length + terminal_edges + empty_arm_edges
+        visible_dependency_edges.length + terminal_edges + empty_arm_edges
       end
     end
 
@@ -73,18 +78,20 @@ module GoodPipeline
       lines = ["graph TD"]
       @steps.each do |step|
         node_id = node_id_for(step)
-        label = escape_label(step.key)
+        label = escape_label(Dashboard::Topology.label_for(step))
         css_class = yield(step)
-        lines << if branch_step?(step)
+        lines << if barrier_step?(step)
+                   %(  #{node_id}[["#{label}"]]:::#{css_class})
+                 elsif branch_step?(step)
                    %(  #{node_id}{"#{label}"}:::#{css_class})
                  else
                    %(  #{node_id}("#{label}"):::#{css_class})
                  end
       end
 
-      @edges.each { |edge| lines << dependency_edge_line(edge) }
+      visible_dependency_edges.each { |edge| lines << dependency_edge_line(edge) }
       lines << %(  #{@terminal_node_id}((" ")):::terminal)
-      terminal_steps.each { |step| lines << "  #{node_id_for(step)} --> #{@terminal_node_id}" }
+      visible_terminal_steps.each { |step| lines << "  #{node_id_for(step)} --> #{@terminal_node_id}" }
       lines.concat(empty_arm_edge_lines)
       lines.join("\n")
     end
@@ -116,6 +123,14 @@ module GoodPipeline
       end
     end
 
+    def visible_dependency_edges
+      @visible_dependency_edges ||= @edges.reject { |edge| all_empty_branch?(edge.upstream) }
+    end
+
+    def visible_terminal_steps
+      @visible_terminal_steps ||= terminal_steps.reject { |step| all_empty_branch?(step) }
+    end
+
     def empty_arm_edge_lines # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
       @empty_arm_edge_lines ||= begin
         branch_arm_steps = @steps.select { |step| branch_arm_step?(step) }.group_by do |step|
@@ -138,12 +153,19 @@ module GoodPipeline
 
     def post_branch_targets(branch_step, branch_arm_steps) # rubocop:disable Metrics/AbcSize
       arm_tokens = Array(branch_arm_steps[branch_step.key.to_s]).to_set { |step| step_token(step) }
-      return [] if arm_tokens.empty?
+      return direct_branch_targets(branch_step) if arm_tokens.empty?
 
       target_tokens = @edges.filter_map do |edge|
         upstream_token = step_token(edge.upstream)
         downstream_token = step_token(edge.downstream)
         downstream_token if arm_tokens.include?(upstream_token) && !arm_tokens.include?(downstream_token)
+      end.to_set
+      @steps.select { |step| target_tokens.include?(step_token(step)) }
+    end
+
+    def direct_branch_targets(branch_step)
+      target_tokens = @edges.filter_map do |edge|
+        step_token(edge.downstream) if step_token(edge.upstream) == step_token(branch_step)
       end.to_set
       @steps.select { |step| target_tokens.include?(step_token(step)) }
     end
@@ -207,6 +229,18 @@ module GoodPipeline
       return step.branch_arm_step? if step.respond_to?(:branch_arm_step?)
 
       step.respond_to?(:branch_arm) && !step.branch_arm.to_s.empty?
+    end
+
+    def barrier_step?(step)
+      Dashboard::Topology.barrier_step?(step)
+    end
+
+    def all_empty_branch?(step)
+      return false unless branch_step?(step) && Array(step.empty_arms).any?
+
+      @steps.none? do |candidate|
+        branch_arm_step?(candidate) && candidate.branch_key.to_s == step.key.to_s
+      end
     end
 
     def safe_status(step)

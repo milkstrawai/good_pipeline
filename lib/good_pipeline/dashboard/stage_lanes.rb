@@ -76,6 +76,20 @@ module GoodPipeline
         step.respond_to?(:job_class) && step.job_class.to_s == GoodPipeline::BRANCH_JOB_CLASS
       end
 
+      def barrier_step?(step)
+        return step.barrier_step? if step.respond_to?(:barrier_step?)
+
+        step.respond_to?(:job_class) && step.job_class.to_s == GoodPipeline::BARRIER_JOB_CLASS
+      end
+
+      def label_for(step)
+        key = step.respond_to?(:key) ? step.key.to_s : step.to_s
+        return key unless barrier_step?(step)
+
+        ordinal = key[/\A__good_pipeline_barrier_(\d+)\z/, 1]
+        ordinal ? "Barrier #{ordinal}" : "Barrier"
+      end
+
       def endpoints(dependency) # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
         return [dependency[0], dependency[1]] if dependency.is_a?(Array)
 
@@ -206,11 +220,11 @@ module GoodPipeline
         ).freeze
       end
 
-      def aggregate(members) # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
+      def aggregate(members) # rubocop:disable Metrics/MethodLength
         groups = {}
         order = []
         members.each do |member|
-          stage = member.step.key.to_s.sub(/_\d+\z/, "")
+          stage = Topology.label_for(member.step).sub(/_\d+\z/, "")
           group_key = "#{stage}@#{member.level}"
           unless groups.key?(group_key)
             groups[group_key] = { stage: stage, level: member.level, members: [] }

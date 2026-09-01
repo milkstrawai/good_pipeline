@@ -684,6 +684,25 @@ class TestPipeline < Minitest::Test
     assert_equal [:do_work], instance.steps_by_key[:finish].dependencies
   end
 
+  def test_all_empty_branch_alias_falls_back_to_branch_sentinel
+    klass = Class.new(GoodPipeline::Pipeline) do
+      def configure(**)
+        branch :check, by: :pick do
+          on :skip
+          on :archive
+        end
+
+        run :finish, TestPipeline::PublishJob, after: :check
+      end
+
+      def pick = :skip
+    end
+
+    instance = klass.build
+
+    assert_equal [:check], instance.steps_by_key[:finish].dependencies
+  end
+
   def test_branch_with_no_arms_raises
     klass = Class.new(GoodPipeline::Pipeline) do
       def configure(**)

@@ -12,6 +12,18 @@ class TestStepRecord < ActiveSupport::TestCase
     assert_equal "pending", step.coordination_status
   end
 
+  def test_identifies_barrier_as_structural_step
+    pipeline = create_pipeline
+    barrier = create_step(pipeline, job_class: GoodPipeline::BARRIER_JOB_CLASS)
+    branch = create_step(pipeline, key: "branch", job_class: GoodPipeline::BRANCH_JOB_CLASS)
+    job = create_step(pipeline, key: "job")
+
+    assert_predicate barrier, :barrier_step?
+    assert_predicate barrier, :structural_step?
+    assert_predicate branch, :structural_step?
+    refute_predicate job, :structural_step?
+  end
+
   # --- UUID primary key ---
 
   def test_id_is_uuid

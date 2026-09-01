@@ -260,6 +260,7 @@ html[data-gp-theme] body {
 .gp-step-dots { display:inline-flex; align-items:center; gap:3px; margin-right:6px; vertical-align:middle; }
 .gp-step-dot { display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--gp-status); opacity:var(--gp-opacity,1); }
 .gp-step-dot.is-branch { border-radius:1px; transform:rotate(45deg) scale(.9); }
+.gp-step-dot.is-barrier { border-radius:1px; box-shadow:inset 1px 0 var(--bg),inset -1px 0 var(--bg); }
 .gp-step-stack { display:inline-flex; align-items:center; width:84px; height:8px; margin-right:6px; overflow:hidden; border-radius:2px; vertical-align:middle; background:var(--bg-3); }
 .gp-step-stack > span { display:block; height:100%; width:var(--gp-width); background:var(--gp-status); opacity:var(--gp-opacity,1); }
 .gp-step-summary { color:var(--fg-3); font:10.5px "JetBrains Mono",monospace; font-variant-numeric:tabular-nums; }
@@ -310,6 +311,7 @@ html[data-gp-theme] body {
 .gp-stage-level { width:28px; flex:none; color:var(--fg-4); font:9.5px "JetBrains Mono",monospace; text-align:right; }
 .gp-stage-role { width:var(--gp-width,12%); min-width:8px; height:10px; flex:none; border:1px solid var(--border-strong); border-radius:2px; background:var(--bg-3); }
 .gp-stage-role--branch { background:color-mix(in oklab,var(--st-halted) 42%,var(--bg-3)); border-color:var(--st-halted); }
+.gp-stage-role--barrier { background:var(--bg-2); border-width:2px; border-color:var(--fg-3); }
 .gp-stage-role--terminal { background:var(--accent); border-color:var(--accent); }
 .gp-stage-stack { display:inline-flex; flex:1; height:10px; overflow:hidden; border-radius:2px; background:var(--bg-2); }
 .gp-stage-stack > span { display:block; width:var(--gp-width); height:100%; background:var(--gp-status); opacity:var(--gp-opacity,1); }

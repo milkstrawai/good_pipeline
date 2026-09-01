@@ -41,6 +41,36 @@ class TestStepDefinition < Minitest::Test
     assert_equal [:download], step.dependencies
   end
 
+  def test_deduplicates_dependencies
+    step = GoodPipeline::StepDefinition.new(key: :a, job_class: DummyJob, dependencies: %i[b b c b])
+
+    assert_equal %i[b c], step.dependencies
+  end
+
+  def test_with_dependencies_preserves_all_metadata_and_freezing
+    step = GoodPipeline::StepDefinition.new(
+      key: :route,
+      job_class: DummyJob,
+      params: { x: 1 },
+      dependencies: [:before],
+      failure_strategy: :ignore,
+      enqueue_options: { queue: "high" },
+      branch_key: :choice,
+      branch_arm: :yes,
+      decides: :pick,
+      empty_arms: [:skip]
+    )
+
+    copy = step.with_dependencies(%i[first first second])
+
+    assert_equal %i[first second], copy.dependencies
+    %i[key job_class params failure_strategy enqueue_options branch_key branch_arm decides empty_arms].each do |field|
+      assert_equal step.public_send(field), copy.public_send(field)
+    end
+    assert_predicate copy, :frozen?
+    assert_predicate copy.dependencies, :frozen?
+  end
+
   def test_defaults_failure_strategy_to_nil
     step = GoodPipeline::StepDefinition.new(key: :a, job_class: DummyJob)
 

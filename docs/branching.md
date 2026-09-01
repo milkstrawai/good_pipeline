@@ -82,6 +82,8 @@ run :save, SaveJob, after: :quality_check
 
 When the decision returns `:no`, all `:yes` arm steps are skipped and `:save` proceeds directly. The dashboard shows the empty arm as a direct edge from the diamond to the next step.
 
+If every arm is empty, `after: :quality_check` depends on the branch sentinel itself, so continuation still waits for the decision to resolve.
+
 ## Multiple branches
 
 Pipelines can have multiple branches in sequence:

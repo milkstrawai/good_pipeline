@@ -38,6 +38,16 @@ run :publish, PublishJob, after: :missing
 
 Forward references are allowed — the full graph is validated after all `run` calls are collected, not incrementally.
 
+Forward references must stay within the same barrier phase. An earlier phase cannot depend on a step declared after a `barrier`, because that would reverse the phase boundary:
+
+```ruby
+run :before, JobA, after: :after
+barrier
+run :after, JobB
+# => GoodPipeline::InvalidPipelineError:
+#    step :before cannot depend on later barrier phase step :after
+```
+
 ### 4. Self-dependencies
 
 A step cannot depend on itself:
@@ -65,6 +75,12 @@ run :b, JobB, after: :a
 run :c, JobC, after: :b
 # => GoodPipeline::InvalidPipelineError: cycle detected: :a -> :c -> :b -> :a
 ```
+
+### 6. Barrier placement
+
+A barrier must have a nonempty phase on both sides. Leading, trailing, and consecutive barriers are rejected, as are barriers inside branch arms. Generated barrier keys use GoodPipeline's reserved `__good_pipeline_barrier_N` form and cannot collide with user step or branch keys.
+
+Repeated keys in one `after:` list are normalized globally before validation and persistence. This keeps dependency rows and `pending_upstream_count` in agreement.
 
 ## Cycle detection algorithm
 

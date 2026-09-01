@@ -30,7 +30,7 @@ module GoodPipeline
       @key = key
       @job_class = job_class
       @params = params.freeze
-      @dependencies = Array(dependencies).freeze
+      @dependencies = Array(dependencies).uniq.freeze
       validate_failure_strategy!(failure_strategy)
       @failure_strategy = failure_strategy
       validate_enqueue_options!(enqueue_options)
@@ -40,6 +40,21 @@ module GoodPipeline
       @decides = decides
       @empty_arms = Array(empty_arms).freeze
       freeze
+    end
+
+    def with_dependencies(dependencies) # rubocop:disable Metrics/MethodLength
+      self.class.new(
+        key: key,
+        job_class: job_class,
+        params: params,
+        dependencies: dependencies,
+        failure_strategy: failure_strategy,
+        enqueue_options: enqueue_options,
+        branch_key: branch_key,
+        branch_arm: branch_arm,
+        decides: decides,
+        empty_arms: empty_arms
+      )
     end
 
     private

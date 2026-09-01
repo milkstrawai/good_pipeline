@@ -14,6 +14,22 @@ class TestRunner < ActiveSupport::TestCase
     end
   end
 
+  BarrierPipeline = Class.new(GoodPipeline::Pipeline) do
+    def configure(**)
+      run :fetch_a, DownloadJob
+      run :fetch_b, DownloadJob
+      barrier
+      run :publish, PublishJob
+    end
+  end
+
+  DuplicateDependencyPipeline = Class.new(GoodPipeline::Pipeline) do
+    def configure(**)
+      run :fetch, DownloadJob
+      run :publish, PublishJob, after: %i[fetch fetch]
+    end
+  end
+
   def test_creates_pipeline_record
     klass = TestPipeline
     instance = klass.build(video_id: 42)
@@ -41,7 +57,7 @@ class TestRunner < ActiveSupport::TestCase
     assert_equal({ "video_id" => 42 }, steps.find_by(key: "download").params)
   end
 
-  def test_creates_dependency_records
+  def test_creates_dependency_records # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
     klass = TestPipeline
     instance = klass.build(video_id: 42)
 
@@ -82,5 +98,27 @@ class TestRunner < ActiveSupport::TestCase
     record = GoodPipeline::Runner.call(instance)
 
     assert_not_nil record.good_job_batch_id
+  end
+
+  def test_persists_barrier_as_structural_step_with_correct_counters # rubocop:disable Metrics/AbcSize
+    record = GoodPipeline::Runner.call(BarrierPipeline.build, start: false)
+    barrier = record.steps.find_by!(job_class: GoodPipeline::BARRIER_JOB_CLASS)
+    publish = record.steps.find_by!(key: "publish")
+
+    assert_equal "pending", barrier.coordination_status
+    assert_equal 2, barrier.pending_upstream_count
+    assert_equal 1, publish.pending_upstream_count
+    assert_nil barrier.good_job_id
+    assert_nil barrier.good_job_batch_id
+    assert_equal 3, record.dependencies.count
+    refute_includes record.steps.where.missing(:upstream_dependencies).pluck(:id), barrier.id
+  end
+
+  def test_persists_duplicate_authored_dependency_once_without_barrier
+    record = GoodPipeline::Runner.call(DuplicateDependencyPipeline.build, start: false)
+    publish = record.steps.find_by!(key: "publish")
+
+    assert_equal 1, publish.pending_upstream_count
+    assert_equal 1, record.dependencies.where(step: publish).count
   end
 end

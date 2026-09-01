@@ -34,7 +34,7 @@
           good_job_url = timing.present? ? good_job_step_url(step) : nil
         %>
         <tr>
-          <td class="gp-step-key"><% if good_job_url %><%= link_to step.key, good_job_url, target: "_blank", rel: "noopener" %><% else %><%= step.key %><% end %></td>
+          <td class="gp-step-key"><% if good_job_url %><%= link_to step_display_key(step), good_job_url, target: "_blank", rel: "noopener" %><% else %><%= step_display_key(step) %><% end %></td>
           <td class="gp-job-class" title="<%= step.job_class %>"><%= step.job_class %></td>
           <td><span class="gp-status gp-status--<%= step_status %>"><%= glyph %> <%= label %></span></td>
           <td class="gp-step-duration"><%= duration.call(step_duration) %></td>

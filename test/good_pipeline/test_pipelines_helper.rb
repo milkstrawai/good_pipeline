@@ -43,6 +43,7 @@ class TestPipelinesHelper < Minitest::Test
     :key, :coordination_status, :good_job_id, :job_class, :branch_arm, :branch_key, :id, :empty_arms
   ) do
     def branch_step? = job_class == GoodPipeline::BRANCH_JOB_CLASS
+    def barrier_step? = job_class == GoodPipeline::BARRIER_JOB_CLASS
     def branch_arm_step? = branch_arm.present?
   end
   FakeDependency = Struct.new(:depends_on_step, :step, :step_id)
@@ -201,6 +202,48 @@ class TestPipelinesHelper < Minitest::Test
     assert_includes result, "n2"
     assert_includes result, ":::terminal"
     assert_includes result, "n1 --> n2"
+  end
+
+  def test_barrier_has_readable_label
+    barrier = FakeStep.new(
+      key: "__good_pipeline_barrier_2", coordination_status: "pending",
+      job_class: GoodPipeline::BARRIER_JOB_CLASS, id: "barrier"
+    )
+
+    assert_equal "Barrier 2", step_display_key(barrier)
+    assert_includes mermaid_definition_diagram(FakePipeline.new(steps: [barrier])),
+                    'n0[["Barrier 2"]]:::barrier'
+    assert_includes mermaid_diagram(FakePipeline.new(steps: [barrier])),
+                    'n0[["Barrier 2"]]:::pending'
+  end
+
+  def test_all_empty_branch_continues_to_barrier_instead_of_end
+    branch = FakeStep.new(
+      key: "route", coordination_status: "succeeded", job_class: GoodPipeline::BRANCH_JOB_CLASS,
+      id: "branch", empty_arms: %w[skip archive]
+    )
+    barrier = FakeStep.new(
+      key: "__good_pipeline_barrier_1", coordination_status: "succeeded",
+      job_class: GoodPipeline::BARRIER_JOB_CLASS, id: "barrier"
+    )
+    publish = FakeStep.new(key: "publish", coordination_status: "succeeded", id: "publish")
+    dependencies = [
+      FakeDependency.new(depends_on_step: branch, step: barrier, step_id: "barrier"),
+      FakeDependency.new(depends_on_step: barrier, step: publish, step_id: "publish")
+    ]
+    builder = GoodPipeline::MermaidDiagramBuilder.new(
+      FakePipeline.new(steps: [branch, barrier, publish], dependencies: dependencies)
+    )
+    graph = builder.definition_diagram
+
+    assert_includes graph, "n0 -->|skip| n1"
+    assert_includes graph, "n0 -->|archive| n1"
+    refute_includes graph, "n0 -->|skip| n3"
+    refute_includes graph, "n0 -->|archive| n3"
+    refute_includes graph, "  n0 --> n1"
+    assert_includes graph, 'n1[["Barrier 1"]]:::barrier'
+    assert_equal 2, builder.edge_count
+    assert_equal 4, builder.rendered_edge_count
   end
 
   # --- mermaid_diagram ---

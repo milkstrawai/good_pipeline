@@ -242,6 +242,7 @@
       "  classDef skipped fill:" + palette.node + ",color:" + palette.skipped + ",stroke:" + palette.skipped,
       "  classDef skipped_by_branch fill:" + palette.node + ",color:" + palette.skipped + ",stroke:" + palette.skipped,
       "  classDef branch fill:" + palette.branch + ",color:#fff,stroke:" + palette.branch,
+      "  classDef barrier fill:" + palette.node + ",color:" + palette.text + ",stroke:" + palette.line + ",stroke-width:2px",
       "  classDef terminal fill:" + palette.terminal + ",color:" + palette.terminalText + ",stroke:" + palette.terminal
     ].join("\n");
   }

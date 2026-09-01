@@ -60,6 +60,10 @@ module GoodPipeline
       humanized_type(pipeline_type).sub(/\s*Pipeline\z/, "")
     end
 
+    def step_display_key(step)
+      Dashboard::Topology.label_for(step)
+    end
+
     def relative_time_tag(datetime)
       return "" unless datetime
 
