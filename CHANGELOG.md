@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-01
+
 ### Added
 
 - **Pipeline phase barriers** — the new zero-argument `barrier` DSL verb inserts a persisted structural synchronization step between declaration phases. Every prior phase step converges on one barrier and following phase entries fan out from it, avoiding all-to-all dependency expansion. Barriers resolve synchronously without enqueuing an ActiveJob and appear as structural nodes in the dashboard.
