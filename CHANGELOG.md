@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+### Breaking changes
+
+- **Ruby 4 minimum** — GoodPipeline now requires Ruby 4.0 or newer. Development, CI, and gem releases use Ruby 4.0.9.
+
 ## [0.5.0] - 2026-09-01
 
 ### Added

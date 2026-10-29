@@ -6,7 +6,7 @@ Define multi-step workflows as directed acyclic graphs — not linear chains. St
 
 ## Requirements
 
-- Ruby >= 3.2
+- Ruby >= 4.0
 - Rails >= 7.2
 - PostgreSQL
 - GoodJob >= 4.14 with `preserve_job_records = true`
