@@ -7,16 +7,16 @@ on:
 jobs:
   build-and-publish:
     name: Build and Publish Package to RubyGems.org
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Set up Ruby 3.4.7
+      - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: 3.4.7
+          ruby-version: 4.0.9
 
       - name: Check release validity
         run: sh .github/scripts/check-release.sh

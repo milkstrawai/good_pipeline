@@ -1,5 +1,5 @@
 [tools]
-ruby = "3.4.7"
+ruby = "4.0.9"
 
 [tasks."docker:start"]
 description = "Start Docker services using docker-compose"

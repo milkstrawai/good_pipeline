@@ -217,10 +217,10 @@ class TestBarrier < Minitest::Test
 
   private
 
-  def build_pipeline(&definition)
+  def build_pipeline(&)
     Class.new(GoodPipeline::Pipeline) do
       define_method(:configure) do |**|
-        instance_exec(&definition)
+        instance_exec(&)
       end
 
       private
