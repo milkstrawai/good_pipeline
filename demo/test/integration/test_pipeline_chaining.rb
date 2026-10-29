@@ -2,6 +2,10 @@
 
 require "test_helper"
 
+class IgnoreChainPipeline < ContinueTestPipeline
+  failure_strategy :ignore
+end
+
 class TestPipelineChaining < ActiveSupport::TestCase
   def run_all_to_completion(pipeline_records, timeout: 15)
     deadline = Time.current + timeout
@@ -44,6 +48,32 @@ class TestPipelineChaining < ActiveSupport::TestCase
 
     assert_equal "halted", upstream.status
     assert_equal "skipped", downstream.status
+  end
+
+  def test_ignored_failure_stays_failed_and_allows_the_chain_to_finish
+    IgnoreChainPipeline.run
+                       .then(NotificationPipeline, with: {})
+                       .then(ArchivePipeline, with: {})
+
+    run_all_to_completion(GoodPipeline::PipelineRecord.all.to_a)
+
+    assert_equal(
+      { "IgnoreChainPipeline" => "failed", "NotificationPipeline" => "succeeded", "ArchivePipeline" => "succeeded" },
+      GoodPipeline::PipelineRecord.pluck(:type, :status).to_h
+    )
+  end
+
+  def test_continue_failure_skips_dependents_even_when_they_use_ignore
+    ContinueTestPipeline.run
+                        .then(IgnoreChainPipeline, with: {})
+                        .then(NotificationPipeline, with: {})
+
+    run_all_to_completion(GoodPipeline::PipelineRecord.all.to_a)
+
+    assert_equal(
+      { "ContinueTestPipeline" => "failed", "IgnoreChainPipeline" => "skipped", "NotificationPipeline" => "skipped" },
+      GoodPipeline::PipelineRecord.pluck(:type, :status).to_h
+    )
   end
 
   # --- Fan-out ---
@@ -118,6 +148,41 @@ class TestPipelineChaining < ActiveSupport::TestCase
     assert_equal "skipped", archive.status
   end
 
+  def test_ignored_failure_waits_for_the_other_upstream_to_finish
+    ignored = create_pipeline(status: "running", on_failure_strategy: "ignore")
+    ignored_step = build_step(ignored, key: "optional", coordination_status: "enqueued")
+    waiting = create_pipeline(status: "running", on_failure_strategy: "halt")
+    waiting_step = build_step(waiting, key: "required", coordination_status: "enqueued")
+    downstream = GoodPipeline::Chain.new([ignored, waiting]).then(NotificationPipeline)
+
+    GoodPipeline::Coordinator.complete_step(ignored_step.id, succeeded: false)
+
+    assert_equal "pending", downstream.reload.status
+
+    GoodPipeline::Coordinator.complete_step(waiting_step.id, succeeded: true)
+
+    assert_equal "running", downstream.reload.status
+  end
+
+  def test_fan_in_requires_every_failure_to_be_ignored
+    ignored = create_pipeline(status: "failed", on_failure_strategy: "ignore")
+    blocking = create_pipeline(status: "failed", on_failure_strategy: "continue")
+
+    downstream = GoodPipeline::Chain.new([ignored, blocking]).then(NotificationPipeline)
+
+    assert_equal "skipped", downstream.reload.status
+  end
+
+  def test_late_chain_registration_accepts_an_ignored_failure
+    upstream = IgnoreChainPipeline.run
+    run_pipeline_to_completion(upstream)
+
+    downstream = upstream.then(NotificationPipeline)
+    run_pipeline_to_completion(downstream)
+
+    assert_equal "succeeded", downstream.reload.status
+  end
+
   # --- Fan-out then fan-in ---
 
   def test_fan_out_then_fan_in
@@ -159,7 +224,7 @@ class TestPipelineChaining < ActiveSupport::TestCase
   end
 
   def test_canceling_pending_upstream_automatically_skips_downstream
-    upstream = create_pipeline(type: "TestPipeline", status: "pending", on_failure_strategy: "halt")
+    upstream = create_pipeline(type: "TestPipeline", status: "pending", on_failure_strategy: "ignore")
     upstream_step = build_step(upstream, key: "work")
     downstream = create_pipeline(type: "NotificationPipeline", status: "pending", on_failure_strategy: "halt")
     GoodPipeline::ChainRecord.create!(upstream_pipeline: upstream, downstream_pipeline: downstream)
@@ -172,7 +237,7 @@ class TestPipelineChaining < ActiveSupport::TestCase
   end
 
   def test_canceling_running_upstream_waits_for_drain_before_skipping_downstream
-    upstream = create_pipeline(type: "TestPipeline", status: "running", on_failure_strategy: "halt")
+    upstream = create_pipeline(type: "TestPipeline", status: "running", on_failure_strategy: "ignore")
     upstream_step = build_step(upstream, key: "work")
     upstream_step.update_columns(coordination_status: "enqueued")
     downstream = create_pipeline(type: "NotificationPipeline", status: "pending", on_failure_strategy: "halt")

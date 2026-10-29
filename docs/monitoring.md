@@ -45,7 +45,7 @@ step.duration             # => 12.34 (Float seconds, from GoodJob record)
 | `succeeded` | All steps terminal, none failed |
 | `failed` | One or more steps failed; `:continue` or `:ignore` strategy was used |
 | `halted` | `:halt` strategy was applied — `halt_triggered` is `true` |
-| `skipped` | Skipped because an upstream pipeline in a chain failed |
+| `skipped` | An upstream pipeline failed without `:ignore`, halted, was canceled, or was skipped |
 | `canceled` | Cancellation completed, or a pending pipeline was canceled before it started — terminal |
 
 ## Step statuses

@@ -32,15 +32,16 @@ module GoodPipeline
       assert_select ".gp-status-filter-scroll > .gp-segment[role=group][aria-label='Status filter']", count: 1
       assert_includes response.body, %(id="gp-table")
       assert_no_match(/data-href/, response.body)
-      asset_href = response.body[%r{href="([^"]*/frontend/static/0-5-0/dashboard\.css)"}, 1]
+      asset_version = GoodPipeline::VERSION.tr(".", "-")
+      asset_href = response.body[%r{href="([^"]*/frontend/static/#{asset_version}/dashboard\.css)"}, 1]
 
-      assert asset_href&.end_with?("/frontend/static/0-5-0/dashboard.css")
+      assert asset_href&.end_with?("/frontend/static/#{asset_version}/dashboard.css")
       refute_includes response.body, "style.css"
       refute_includes response.body, "<script>"
 
       assert_dashboard_css(asset_href)
 
-      get "/good_pipeline/frontend/static/0-5-0/dashboard.js"
+      get "/good_pipeline/frontend/static/#{asset_version}/dashboard.js"
 
       assert_response :success
       assert_includes response.media_type, "javascript"

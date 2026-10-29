@@ -1,6 +1,6 @@
 # Failure Strategies
 
-Three failure strategies control what happens when a step fails. Set one at the pipeline level, then override per step if needed.
+Three failure strategies control what happens when a step fails and whether a failed pipeline allows its chain to continue. Set one at the pipeline level, then override per step if needed.
 
 ## Pipeline-level strategy
 
@@ -139,6 +139,10 @@ A barrier depends on every step in its preceding phase, so the same rules apply 
 - Cancellation cancels a pending barrier and its later phase.
 
 Whenever eligible work remains, every new terminal step releases its outgoing dependency counter exactly once. This includes enqueue-time configuration failures and steps skipped by partial halt propagation, preventing a barrier or ordinary fan-in from remaining pending after all upstreams are terminal.
+
+## Pipeline chains
+
+Pipeline chains use each upstream pipeline's stored `failure_strategy`. Step-level overrides do not change the chain policy. See [Pipeline Chaining](./pipeline-chaining.md#unsuccessful-upstream-propagation) for how failures affect dependent pipelines.
 
 ## Early termination with success
 

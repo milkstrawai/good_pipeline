@@ -1,6 +1,8 @@
 # Pipeline Chaining
 
-Pipelines can be wired together into pipeline-level DAGs. A downstream pipeline starts only after all its upstream pipelines succeed.
+Pipelines can be wired together into pipeline-level DAGs. A downstream pipeline starts after every upstream has succeeded or failed with `failure_strategy :ignore`.
+
+The examples below use the default `:halt` strategy unless another strategy is shown.
 
 ## Serial chain
 
@@ -88,9 +90,9 @@ Pipeline chaining is a first-class primitive — upstream/downstream relationshi
 1. Creates downstream pipeline records with `status: pending` — params are stored immediately at chain registration time
 2. Creates `good_pipeline_chains` rows linking upstream to downstream pipeline IDs
 3. If any upstream has already reached a terminal state, immediately triggers chain propagation so the downstream is started or skipped
-4. After any upstream pipeline reaches a terminal state, the chain coordinator checks if all upstreams for each downstream have succeeded
-5. If all upstreams succeeded, the downstream pipeline starts (root steps are enqueued)
-6. If any upstream fails, halts, is canceled, or is skipped, the downstream pipeline is set to `skipped`
+4. After any upstream pipeline reaches a terminal state, the chain coordinator checks each upstream's status and stored failure strategy
+5. If every upstream succeeded or failed with `:ignore`, the downstream pipeline starts (root steps are enqueued)
+6. If any terminal upstream does not satisfy its dependency, the downstream pipeline is set to `skipped`
 
 The chain coordinator uses a blocking `FOR UPDATE` row lock. A contending propagation waits, then rechecks the downstream pipeline while locked, so a fan-in wake-up cannot be silently dropped. This also makes `.then` safe to call after an upstream has already completed.
 
@@ -98,14 +100,16 @@ Individual chain transitions are atomic and propagation is idempotent, but deliv
 
 ## Unsuccessful upstream propagation
 
-If any upstream pipeline in a chain fails, halts, is canceled, or is skipped:
+A failed upstream using `failure_strategy :ignore` allows the chain to continue after it finishes. Its status remains `failed`, and failure callbacks still run. The pipeline-level strategy controls chain dependencies; a step-level `on_failure:` override only controls that step's outgoing edges inside its pipeline.
+
+If any upstream pipeline fails with `:continue`, halts, is canceled, or is skipped:
 
 - The downstream pipeline transitions to `skipped`
 - Any further downstream pipelines are also recursively `skipped`
 - `on_complete` callbacks fire on skipped pipelines, but `on_failure` does **not** — being skipped is not considered a failure
 
 ```
-A (failed) → B (skipped) → C (skipped) → D (skipped)
+A (failed, :continue) → B (skipped) → C (skipped) → D (skipped)
 ```
 
 A `canceling` upstream is still nonterminal, so its downstream pipelines remain pending while already-enqueued work drains. Once the upstream reaches `canceled`, normal chain propagation skips the pending downstream graph.
