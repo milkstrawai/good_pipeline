@@ -1,0 +1,11 @@
+# Collapse generated dependency files and screenshots in GitHub diffs.
+gemfiles/*.gemfile linguist-generated
+gemfiles/*.gemfile.lock linguist-generated
+docs/package-lock.json linguist-generated
+**/screenshots/** linguist-generated
+
+# Keep shared test setup visible when collapsing tests.
+test/** linguist-generated
+demo/test/** linguist-generated
+test/test_helper.rb -linguist-generated
+demo/test/test_helper.rb -linguist-generated
