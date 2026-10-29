@@ -22,7 +22,7 @@ module GoodPipeline
             locked.transition_to!(:skipped)
             Coordinator.dispatch_callbacks_once(locked, :skipped)
             skipped_downstream_ids = locked.downstream_pipelines.pluck(:id)
-          elsif all_upstreams_succeeded?(locked)
+          elsif all_upstreams_satisfied?(locked)
             start_pipeline(locked)
           end
         end
@@ -32,12 +32,16 @@ module GoodPipeline
 
       def should_skip_downstream?(pipeline)
         pipeline.upstream_pipelines.any? do |upstream|
-          upstream.failed? || upstream.halted? || upstream.skipped? || upstream.canceled?
+          upstream.terminal? && !upstream_satisfied?(upstream)
         end
       end
 
-      def all_upstreams_succeeded?(pipeline)
-        pipeline.upstream_pipelines.all?(&:succeeded?)
+      def upstream_satisfied?(upstream)
+        upstream.succeeded? || (upstream.failed? && upstream.ignore?)
+      end
+
+      def all_upstreams_satisfied?(pipeline)
+        pipeline.upstream_pipelines.all? { |upstream| upstream_satisfied?(upstream) }
       end
 
       def start_pipeline(pipeline_record)

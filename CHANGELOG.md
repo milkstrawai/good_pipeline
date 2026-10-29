@@ -2,6 +2,7 @@
 
 ### Breaking changes
 
+- **Chain failure strategies** — chained pipelines now use each upstream pipeline's stored `failure_strategy`. An upstream that succeeds or fails with `:ignore` satisfies its chain dependency; any other terminal outcome skips dependents. Downstream pipelines wait for every dependency, including when chains are registered after an upstream finishes. Ignored failures keep their `failed` status and failure callbacks. No new setting or migration is required.
 - **Ruby 4 minimum** — GoodPipeline now requires Ruby 4.0 or newer. Development, CI, and gem releases use Ruby 4.0.9.
 
 ## [0.5.0] - 2026-09-01
